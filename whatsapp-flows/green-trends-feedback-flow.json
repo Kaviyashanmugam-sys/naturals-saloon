@@ -1,0 +1,147 @@
+{
+  "version": "7.3",
+  "routing_model": {
+    "FEEDBACK_RATES": ["GOOGLE_REVIEW"],
+    "GOOGLE_REVIEW": []
+  },
+  "screens": [
+    {
+      "id": "FEEDBACK_RATES",
+      "title": "Rate Your Experience",
+      "data": {
+        "google_review_url": {
+          "type": "string",
+          "__example__": "https://search.google.com/local/writereview?placeid=xxx"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextBody", "text": "UNISEX HAIR & STYLE SALON" },
+              { "type": "TextBody", "text": "Help us improve — a few quick questions 💚" },
+              {
+                "type": "TextSubheading",
+                "text": "How was our staff performance?"
+              },
+              {
+                "type": "Dropdown",
+                "label": "Staff performance",
+                "name": "staff_performance",
+                "required": true,
+                "data-source": [
+                  { "id": "5_Excellent", "title": "⭐⭐⭐⭐⭐  Excellent (5/5)" },
+                  { "id": "4_Good",      "title": "⭐⭐⭐⭐☆  Good (4/5)" },
+                  { "id": "3_Average",   "title": "⭐⭐⭐☆☆  Average (3/5)" },
+                  { "id": "2_Poor",      "title": "⭐⭐☆☆☆  Below Average (2/5)" },
+                  { "id": "1_Very_Poor", "title": "⭐☆☆☆☆  Poor (1/5)" }
+                ]
+              },
+              {
+                "type": "TextSubheading",
+                "text": "How were our amenities and facilities?"
+              },
+              {
+                "type": "Dropdown",
+                "label": "Amenities & facilities",
+                "name": "amenities_rating",
+                "required": true,
+                "data-source": [
+                  { "id": "5_Excellent", "title": "⭐⭐⭐⭐⭐  Excellent (5/5)" },
+                  { "id": "4_Good",      "title": "⭐⭐⭐⭐☆  Good (4/5)" },
+                  { "id": "3_Average",   "title": "⭐⭐⭐☆☆  Average (3/5)" },
+                  { "id": "2_Poor",      "title": "⭐⭐☆☆☆  Below Average (2/5)" },
+                  { "id": "1_Very_Poor", "title": "⭐☆☆☆☆  Poor (1/5)" }
+                ]
+              },
+              {
+                "type": "TextSubheading",
+                "text": "How was your overall experience?"
+              },
+              {
+                "type": "Dropdown",
+                "label": "Overall experience",
+                "name": "overall_experience",
+                "required": true,
+                "data-source": [
+                  { "id": "5_Excellent", "title": "⭐⭐⭐⭐⭐  Excellent (5/5)" },
+                  { "id": "4_Good",      "title": "⭐⭐⭐⭐☆  Good (4/5)" },
+                  { "id": "3_Average",   "title": "⭐⭐⭐☆☆  Average (3/5)" },
+                  { "id": "2_Poor",      "title": "⭐⭐☆☆☆  Below Average (2/5)" },
+                  { "id": "1_Very_Poor", "title": "⭐☆☆☆☆  Poor (1/5)" }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Submit Feedback",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": { "type": "screen", "name": "GOOGLE_REVIEW" },
+                  "payload": {
+                    "staff_performance":  "${form.staff_performance}",
+                    "amenities_rating":   "${form.amenities_rating}",
+                    "overall_experience": "${form.overall_experience}",
+                    "google_review_url":  "${data.google_review_url}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "GOOGLE_REVIEW",
+      "title": "Share Your Experience on Google ⭐",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "staff_performance":  { "type": "string", "__example__": "5_Excellent" },
+        "amenities_rating":   { "type": "string", "__example__": "5_Excellent" },
+        "overall_experience": { "type": "string", "__example__": "5_Excellent" },
+        "google_review_url":  { "type": "string", "__example__": "https://search.google.com/local/writereview?placeid=xxx" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              { "type": "TextBody", "text": "UNISEX HAIR & STYLE SALON" },
+              { "type": "TextHeading", "text": "Thank you for your feedback!" },
+              {
+                "type": "TextBody",
+                "text": "Your experience helps others discover our salon. Share your review on Google and help others make the right choice. 💚"
+              },
+              {
+                "type": "TextArea",
+                "label": "Your Google Review (optional)",
+                "name": "review_text",
+                "required": false,
+                "helper-text": "Share what you loved about your visit..."
+              },
+              {
+                "type": "Footer",
+                "label": "Continue to Google Review",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "staff_performance":  "${data.staff_performance}",
+                    "amenities_rating":   "${data.amenities_rating}",
+                    "overall_experience": "${data.overall_experience}",
+                    "review_text":        "${form.review_text}",
+                    "google_review_url":  "${data.google_review_url}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
