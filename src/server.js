@@ -932,7 +932,7 @@ app.post("/api/booking-status", async (req, res) => {
   }
 });
 
-app.listen(config.port, "localhost", () => {
+app.listen(config.port, "0.0.0.0", () => {
   console.log(`Naturals WhatsApp bot listening on http://0.0.0.0:${config.port}`);
   console.log(`Database: ${dbPath}`);
   console.log(`Flow endpoint: POST http://localhost:${config.port}/flow (use same path behind ngrok)`);
