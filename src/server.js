@@ -10,6 +10,9 @@ import {
   listAppointments,
   listBookings,
   listUsers,
+  setSalonRating,
+  getSalonRating,
+  listSalonRatings,
   setFlowSession,
   setFeedbackSession,
   getFeedbackSession,
@@ -67,7 +70,11 @@ validateConfig();
 const dbPath = await initDatabase();
 
 // ─── ADMIN CONFIG ───────────────────────────────────────────
-const ADMIN_WHATSAPP = process.env.ADMIN_WHATSAPP || "917708420110";
+const ADMIN_NUMBERS = new Set([
+  process.env.ADMIN_WHATSAPP || "917708420110",
+  "917904307757",
+  "917708420110"
+]);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -182,7 +189,9 @@ async function notifyAdminNewBooking(booking) {
       `👩‍🔧 *Stylist:* ${booking.stylistName || "—"}\n` +
       `🆔 *Booking ID:* ${booking.bookingId || "—"}\n\n` +
       `_Reply *report* to see all bookings_`;
-    await sendText(ADMIN_WHATSAPP, msg);
+    for (const adminNum of ADMIN_NUMBERS) {
+      await sendText(adminNum, msg);
+    }
     logWebhook("admin_notify", `new booking ${booking.bookingId}`);
   } catch (e) {
     logWebhookError("notifyAdminNewBooking", e);
@@ -649,9 +658,30 @@ async function handleInboundText(msg) {
   const { phase } = getOnboarding(from);
 
   // ─── ADMIN COMMANDS ──────────────────────────────────────
-  if (from === ADMIN_WHATSAPP) {
-    if (norm === "report" || norm === "report " || norm.startsWith("report")) {
+  if (ADMIN_NUMBERS.has(from)) {
+    if (norm === "report" || norm.startsWith("report")) {
       await sendAdminReport(from);
+      return;
+    }
+    const ratingMatch = norm.match(/^setrating\s+(\d+)\s+([\d.]+)\s+(\d+)/);
+    if (ratingMatch) {
+      const [, salonId, rating, reviewCount] = ratingMatch;
+      setSalonRating(salonId, parseFloat(rating), parseInt(reviewCount));
+      await sendText(from, "✅ Rating updated!\nSalon ID: " + salonId + "\n⭐ " + rating + " · " + reviewCount + " Reviews");
+      return;
+    }
+    if (norm === "listratings") {
+      const ratings = listSalonRatings();
+      if (ratings.length === 0) {
+        await sendText(from, "No ratings set yet.\nUse: setrating <salonId> <rating> <reviews>\nExample: setrating 1158 4.7 230");
+      } else {
+        const lines = ratings.map(r => "📍 " + r.salonId + ": ⭐ " + r.rating + " · " + r.reviewCount + " reviews").join("\n");
+        await sendText(from, "*Salon Ratings:*\n\n" + lines);
+      }
+      return;
+    }
+    if (norm === "help" || norm === "admin") {
+      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
       return;
     }
   }

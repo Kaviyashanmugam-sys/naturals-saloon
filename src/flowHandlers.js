@@ -11,7 +11,7 @@ import {
 } from "./bookingEngine.js";
 import { createAppointment, fetchSlots } from "./gtlApi.js";
 import { config } from "./config.js";
-import { getFlowSession, insertBooking, setFlowSession } from "./database.js";
+import { getFlowSession, insertBooking, setFlowSession, getSalonRating } from "./database.js";
 
 function getSession(flowToken) {
   return getFlowSession(flowToken);
@@ -259,10 +259,10 @@ export async function handleFlowDataExchange(reqBody) {
       )} data_mobile=${Boolean(data.customer_mobile)} session_mobile=${Boolean(session.customer_mobile)}`
     );
 
-    // Get salon rating & review count from cache
-    const salon = getSalonByIdFromCache(initData.salon_id);
-    const salonRating = salon?.rating ? String(salon.rating) : "4.9";
-    const salonReviewCount = salon?.reviewCount ? String(salon.reviewCount) : "170";
+    // Get salon rating & review count from DB (set by admin via WhatsApp)
+    const { rating: ratingVal, reviewCount: reviewCountVal } = getSalonRating(initData.salon_id || "");
+    const salonRating = String(ratingVal);
+    const salonReviewCount = String(reviewCountVal);
 
     return {
       ...v,
