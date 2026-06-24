@@ -123,15 +123,13 @@ function todayIsoDate() {
   return `${now.year}-${now.month}-${now.day}`;
 }
 
-// After 8:30 PM IST the current day is no longer bookable; advance minimum to tomorrow.
-// IST = UTC+5:30 (fixed offset, no DST) — avoids Intl.DateTimeFormat timezone reliability issues.
 function getMinBookingDate() {
   const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
   const istNow = new Date(Date.now() + IST_OFFSET_MS);
   const hour = istNow.getUTCHours();
   const minute = istNow.getUTCMinutes();
   const currentMinutes = hour * 60 + minute;
-  const cutoffMinutes = 20 * 60 + 30; // 8:30 PM
+  const cutoffMinutes = 20 * 60 + 30;
   const pastCutoff = currentMinutes >= cutoffMinutes;
   console.log(`[flow] getMinBookingDate IST=${hour}:${String(minute).padStart(2, "0")} pastCutoff=${pastCutoff}`);
   const base = pastCutoff
@@ -260,6 +258,12 @@ export async function handleFlowDataExchange(reqBody) {
         session.customer_name
       )} data_mobile=${Boolean(data.customer_mobile)} session_mobile=${Boolean(session.customer_mobile)}`
     );
+
+    // Get salon rating & review count from cache
+    const salon = getSalonByIdFromCache(initData.salon_id);
+    const salonRating = salon?.rating ? String(salon.rating) : "4.9";
+    const salonReviewCount = salon?.reviewCount ? String(salon.reviewCount) : "170";
+
     return {
       ...v,
       screen: "ENTRY",
@@ -274,7 +278,9 @@ export async function handleFlowDataExchange(reqBody) {
         maps_url: initData.maps_url || "",
         salon_latitude: initData.salon_latitude || "",
         salon_longitude: initData.salon_longitude || "",
-        min_booking_date: getMinBookingDate()
+        min_booking_date: getMinBookingDate(),
+        salon_rating: salonRating,
+        salon_review_count: salonReviewCount
       }
     };
   }
@@ -326,13 +332,11 @@ export async function handleFlowDataExchange(reqBody) {
     if (Array.isArray(selectedRaw)) {
       selectedIds = selectedRaw.map((v) => String(v || "").trim()).filter(Boolean);
     } else if (typeof selectedRaw === "string" && selectedRaw.trim()) {
-      // Some flow runtimes serialize array-like values as comma-separated strings.
       selectedIds = selectedRaw
         .split(",")
         .map((v) => v.trim())
         .filter(Boolean);
     } else {
-      // Backward compatibility with older form payloads.
       selectedIds = [
         data.category_id,
         data.additional_category_id,
@@ -364,7 +368,7 @@ export async function handleFlowDataExchange(reqBody) {
     }
     const nextSession = mergeAndSaveSession(flowToken, session, {
       ...merged,
-        selected_categories: selectedIds,
+      selected_categories: selectedIds,
       service_blob: newBlob,
       services_pretty
     });

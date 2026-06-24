@@ -35,7 +35,6 @@ function normalizeSalon(row) {
   const storeName = String(row?.StoreName ?? row?.name ?? "").trim();
   const areaFromName = storeName.includes("-") ? storeName.split("-").slice(1).join("-").trim() : "";
   const rawAddress = String(row?.Address ?? row?.AddressLine1 ?? "").trim();
-  // Strip trailing phone fragment (", Phone: XXXXXXXXXX") that some API rows embed in address
   const phoneMatch = rawAddress.match(/[,.\s]*Phone\s*[:\-]?\s*([\d\s]+)$/i);
   const rawPhone = String(row?.Phone ?? row?.PhoneNo ?? row?.ContactNo ?? phoneMatch?.[1] ?? "").replace(/\s+/g, "").trim();
   const phone = rawPhone === "0" || rawPhone === "0.0" ? "" : rawPhone;
@@ -53,6 +52,12 @@ function normalizeSalon(row) {
   const lngFin = Number.isFinite(lng) ? lng : null;
   const mapsUrl = String(row?.GoogleLocation ?? row?.mapsUrl ?? row?.MapURL ?? "").trim();
 
+  // Rating & review count — use API values if present, else defaults
+  const ratingRaw = Number(row?.Rating ?? row?.rating ?? row?.AvgRating ?? row?.avgRating ?? 0);
+  const rating = ratingRaw > 0 ? Number(ratingRaw.toFixed(1)) : 4.9;
+  const reviewCountRaw = Number(row?.ReviewCount ?? row?.reviewcount ?? row?.TotalReviews ?? row?.totalReviews ?? 0);
+  const reviewCount = reviewCountRaw > 0 ? reviewCountRaw : 170;
+
   return {
     id,
     name,
@@ -64,7 +69,9 @@ function normalizeSalon(row) {
     mapsUrl,
     lat: latFin,
     lng: lngFin,
-    distanceKm: Number.isFinite(distanceKmRaw) ? Number(distanceKmRaw.toFixed(2)) : null
+    distanceKm: Number.isFinite(distanceKmRaw) ? Number(distanceKmRaw.toFixed(2)) : null,
+    rating,
+    reviewCount
   };
 }
 
@@ -130,13 +137,11 @@ export async function fetchStoresByLocation({ lat, lng }) {
 export async function fetchStoresByPincode(pincode) {
   const q = String(pincode || "").trim();
   const salons = await fetchAllStores();
-  // Prefer exact pincode field match
   const byPin = salons.filter((s) => s.pincode === q);
   if (byPin.length > 0) {
     console.log("[gtlApi] normalized salons (pincode exact) count=", byPin.length);
     return byPin;
   }
-  // Fallback: search within full address text
   const filtered = salons.filter((s) => s.addressLine1.toLowerCase().includes(q.toLowerCase()));
   console.log("[gtlApi] normalized salons (pincode address fallback) count=", filtered.length);
   return filtered;
@@ -259,7 +264,6 @@ export async function fetchSlots({ storeId, aptDate, empId }) {
     .map((id) => ({ id, title: id }));
   if (exact.length) return exact;
 
-  // Support response shape: { slots: [], start: "09:00", end: "21:00" }
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const rangeStart = time24ToMinutes(raw.start);
     const rangeEnd = time24ToMinutes(raw.end);
@@ -273,7 +277,6 @@ export async function fetchSlots({ storeId, aptDate, empId }) {
     }
   }
 
-  // Fallback to 30-min cadence if upstream does not provide slots.
   const fallback = [];
   for (let h = 10; h < 20; h += 1) {
     for (const mm of ["00", "30"]) {
