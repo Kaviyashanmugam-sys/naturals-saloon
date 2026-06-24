@@ -86,7 +86,7 @@ export async function listAppointments() {
     timeSlot: b.timeSlot,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt
-  })));
+  }));
 }
 
 export async function listBookings() {
