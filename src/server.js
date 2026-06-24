@@ -66,6 +66,9 @@ import feedbackRequestRouter from "./feedbackRequestApi.js";
 validateConfig();
 const dbPath = await initDatabase();
 
+// ─── ADMIN CONFIG ───────────────────────────────────────────
+const ADMIN_WHATSAPP = process.env.ADMIN_WHATSAPP || "917708420110";
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -78,15 +81,115 @@ app.use(express.json({ limit: "2mb" }));
 app.use("/static", express.static(path.join(__dirname, "..", "public")));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "green-trends-whatsapp-bot" });
+  res.json({ ok: true, service: "naturals-whatsapp-bot" });
 });
 
 app.use(appointmentConfirmationRouter);
 app.use(feedbackRequestRouter);
 
+// ─── ADMIN REPORT ────────────────────────────────────────────
+async function sendAdminReport(to) {
+  try {
+    const allBookings = await listBookings();
+    const today = new Date().toISOString().slice(0, 10);
 
+    const todayBookings = allBookings.filter(b => {
+      const d = b.date || b.createdAt || "";
+      return d.startsWith(today);
+    });
 
-/** Flow submit completion — do NOT run welcome again (was misclassified as interactive). */
+    const all = allBookings.length;
+    const todayAll = todayBookings.length;
+
+    const confirmed = allBookings.filter(b => b.status === "CONFIRMED").length;
+    const rejected  = allBookings.filter(b => b.status === "REJECTED").length;
+    const pending   = allBookings.filter(b =>
+      !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
+    );
+
+    const todayConfirmed = todayBookings.filter(b => b.status === "CONFIRMED").length;
+    const todayRejected  = todayBookings.filter(b => b.status === "REJECTED").length;
+    const todayPending   = todayBookings.filter(b =>
+      !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
+    );
+
+    const formatDate = (d) => {
+      if (!d) return "—";
+      return d.slice(0, 10);
+    };
+
+    let msg = `📊 *Naturals Booking Report*\n`;
+    msg += `🗓️ ${today}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━\n\n`;
+
+    msg += `*📅 Today (${today})*\n`;
+    msg += `✅ Confirmed: ${todayConfirmed}\n`;
+    msg += `⏳ Pending: ${todayPending.length}\n`;
+    msg += `❌ Rejected: ${todayRejected}\n`;
+    msg += `📋 Total Today: ${todayAll}\n\n`;
+
+    msg += `*📈 All Time*\n`;
+    msg += `✅ Confirmed: ${confirmed}\n`;
+    msg += `⏳ Pending: ${pending.length}\n`;
+    msg += `❌ Rejected: ${rejected}\n`;
+    msg += `📋 Total: ${all}\n`;
+
+    if (todayPending.length > 0) {
+      msg += `\n━━━━━━━━━━━━━━━━━━\n`;
+      msg += `*⏳ Today's Pending Bookings:*\n`;
+      todayPending.slice(0, 10).forEach((b, i) => {
+        msg += `\n${i + 1}. *${b.fullName || "—"}*\n`;
+        msg += `   📍 ${b.salonName || "—"}\n`;
+        msg += `   💇 ${b.serviceItem || "—"}\n`;
+        msg += `   📅 ${formatDate(b.date)} ${b.timeSlot || ""}\n`;
+        msg += `   🆔 ${b.bookingId || "—"}\n`;
+      });
+    }
+
+    if (pending.length > 0 && todayPending.length === 0) {
+      msg += `\n━━━━━━━━━━━━━━━━━━\n`;
+      msg += `*⏳ All Pending Bookings:*\n`;
+      pending.slice(0, 10).forEach((b, i) => {
+        msg += `\n${i + 1}. *${b.fullName || "—"}*\n`;
+        msg += `   📍 ${b.salonName || "—"}\n`;
+        msg += `   💇 ${b.serviceItem || "—"}\n`;
+        msg += `   📅 ${formatDate(b.date)} ${b.timeSlot || ""}\n`;
+        msg += `   🆔 ${b.bookingId || "—"}\n`;
+      });
+    }
+
+    msg += `\n━━━━━━━━━━━━━━━━━━\n`;
+    msg += `_Reply *report* anytime for latest summary_`;
+
+    await sendText(to, msg);
+    logWebhook("admin_report", `sent to ${to}`);
+  } catch (e) {
+    logWebhookError("sendAdminReport", e);
+    await sendText(to, "❌ Report generate பண்ண error வந்துச்சு. Try again!");
+  }
+}
+
+// ─── ADMIN NOTIFICATION on new booking ───────────────────────
+async function notifyAdminNewBooking(booking) {
+  try {
+    const msg = `🔔 *New Booking — Naturals*\n\n` +
+      `👤 *Customer:* ${booking.fullName || "—"}\n` +
+      `📱 *Mobile:* ${booking.mobile || "—"}\n` +
+      `📍 *Salon:* ${booking.salonName || "—"}\n` +
+      `💇 *Service:* ${booking.serviceItem || "—"}\n` +
+      `📅 *Date:* ${booking.date || "—"}\n` +
+      `⏰ *Time:* ${booking.timeSlot || "—"}\n` +
+      `👩‍🔧 *Stylist:* ${booking.stylistName || "—"}\n` +
+      `🆔 *Booking ID:* ${booking.bookingId || "—"}\n\n` +
+      `_Reply *report* to see all bookings_`;
+    await sendText(ADMIN_WHATSAPP, msg);
+    logWebhook("admin_notify", `new booking ${booking.bookingId}`);
+  } catch (e) {
+    logWebhookError("notifyAdminNewBooking", e);
+  }
+}
+
+/** Flow submit completion */
 async function handleFlowCompletion(msg) {
   const from = msg.from;
   const payload = parseNfmReplyPayload(msg);
@@ -132,8 +235,6 @@ async function handleFlowCompletion(msg) {
   const summary = formatBookingSummaryFromFlow(payload);
   let addToCalendarSucceeded = false;
 
-  // Fallback persistence: ensures bookings are stored even if Flow completion
-  // reaches webhook but `/flow` complete-action did not persist.
   try {
     const servicePretty =
       payload.service_item_pretty ||
@@ -160,6 +261,9 @@ async function handleFlowCompletion(msg) {
 
     await insertBooking(fallbackBooking);
     logWebhook("db", `booking persisted from nfm_reply id=${fallbackBooking.bookingId}`);
+
+    // Notify admin about new booking
+    await notifyAdminNewBooking(fallbackBooking);
 
     const addToCalendarPayload = {
       storeid: Number(payload.salon_id || 0),
@@ -191,10 +295,7 @@ async function handleFlowCompletion(msg) {
     }
   } else {
     try {
-      await sendText(
-        from,
-        "We received your request, but booking confirmation is pending. Our team will get back to you shortly."
-      );
+      await sendText(from, "We received your request, but booking confirmation is pending. Our team will get back to you shortly.");
       logWebhook("send", "booking pending message sent");
     } catch (e) {
       logWebhookError("send booking pending message", e);
@@ -212,10 +313,7 @@ async function handleFlowCompletion(msg) {
       });
       logWebhook("send", "location pin OK");
       try {
-        await sendText(
-          from,
-          "💚 Thank you for choosing Naturals — we truly appreciate your trust. We cannot wait to see you at the salon! ✨"
-        );
+        await sendText(from, "💚 Thank you for choosing Naturals — we truly appreciate your trust. We cannot wait to see you at the salon! ✨");
         logWebhook("send", "post-location thank you OK");
       } catch (tyErr) {
         logWebhookError("send thank you after location", tyErr);
@@ -258,7 +356,6 @@ function sanitizeNameForApi(value) {
   return cleaned || "Customer";
 }
 
-/** Hi → welcome image first, then native location request + pincode hint (Flow opens after list pick). */
 async function sendWelcomeImageAndAskLocation(msg) {
   const from = msg.from;
   if (!from) return;
@@ -283,7 +380,6 @@ Customer First`;
     logWebhookError("welcome image (set PUBLIC_BASE_URL or WELCOME_IMAGE_URL)", imgErr);
   }
 
-  // Keep a deterministic UX order: welcome first, then actions after a short gap.
   await delay(2000);
 
   try {
@@ -304,10 +400,7 @@ async function startBookingLocationFlow(from) {
     logWebhook("send", "location input options list OK");
   } catch (e) {
     logWebhookError("location_input_options_list", e);
-    await sendText(
-      from,
-      "Choose one: *Live Location* or *Area* to find nearby salons."
-    );
+    await sendText(from, "Choose one: *Live Location* or *Area* to find nearby salons.");
   }
 
   setOnboarding(from, { phase: PHASE.AWAITING_LOCATION_INPUT_PICK, location_input_mode: "" });
@@ -365,12 +458,7 @@ async function handleChangeSalon(from) {
   const { nearby_salons } = getOnboarding(from);
   if (nearby_salons && nearby_salons.length > 0) {
     try {
-      await sendSalonListMessage(
-        from,
-        nearby_salons,
-        "Change Salon ✨",
-        "Pick a different salon below.\n\nOr type a *city / area / pincode* to search in a new location."
-      );
+      await sendSalonListMessage(from, nearby_salons, "Change Salon ✨", "Pick a different salon below.\n\nOr type a *city / area / pincode* to search in a new location.");
       logWebhook("send", "change salon list OK");
       setOnboarding(from, { phase: PHASE.AWAITING_SALON_PICK });
     } catch (e) {
@@ -384,14 +472,8 @@ async function handleChangeSalon(from) {
 
 async function sendBookingFlowAfterSalonSelection(from, salon) {
   if (!config.flowIdBookAppointment || config.flowIdBookAppointment.includes("replace")) {
-    logWebhook(
-      "send flow",
-      "SKIPPED — set FLOW_ID_BOOK_APPOINTMENT in .env to your published Flow ID (WhatsApp Manager → Flows)."
-    );
-    await sendText(
-      from,
-      "⚠️ Booking Flow is not configured yet. Ask your admin to set FLOW_ID_BOOK_APPOINTMENT."
-    );
+    logWebhook("send flow", "SKIPPED — set FLOW_ID_BOOK_APPOINTMENT in .env");
+    await sendText(from, "⚠️ Booking Flow is not configured yet. Ask your admin to set FLOW_ID_BOOK_APPOINTMENT.");
     return;
   }
 
@@ -425,7 +507,6 @@ async function sendBookingFlowAfterSalonSelection(from, salon) {
     stylist_options: stylistOptions
   };
 
-  // Keep a server-side fallback so ENTRY can prefill even if init payload omits data.
   setFlowSession(flowToken, initialFlowData);
 
   await sendBookingFlow(from, initialFlowData, flowToken);
@@ -458,16 +539,10 @@ async function handleSalonListReply(msg) {
 
     if (selectionId === "loc_mode_live") {
       try {
-        await sendLocationRequestMessage(
-          from,
-          "📍 Great choice. Tap *Send location* below to share your current location."
-        );
+        await sendLocationRequestMessage(from, "📍 Great choice. Tap *Send location* below to share your current location.");
       } catch (e) {
         logWebhookError("location_request_message after mode pick", e);
-        await sendText(
-          from,
-          "📍 Tap 📎 → *Location* → send your current location so we can list nearby salons."
-        );
+        await sendText(from, "📍 Tap 📎 → *Location* → send your current location so we can list nearby salons.");
       }
       await sendPromptWithBackButton(from, "Or tap below if you'd like to choose a different location method.");
       setOnboarding(from, { phase: PHASE.AWAITING_PIN_OR_LOCATION, location_input_mode: "live" });
@@ -573,6 +648,14 @@ async function handleInboundText(msg) {
   const norm = text.trim().toLowerCase();
   const { phase } = getOnboarding(from);
 
+  // ─── ADMIN COMMANDS ──────────────────────────────────────
+  if (from === ADMIN_WHATSAPP) {
+    if (norm === "report" || norm === "report " || norm.startsWith("report")) {
+      await sendAdminReport(from);
+      return;
+    }
+  }
+
   if (phase === PHASE.AWAITING_FEEDBACK_TEXT) {
     const fbSession = getFeedbackSession(from);
     await insertFeedback({
@@ -622,10 +705,7 @@ async function handleInboundText(msg) {
       await presentNearbySalonsOrRetry(from, nearby);
       return;
     }
-    await sendText(
-      from,
-      "👆 Tap *Choose salon* in the menu above and pick a row — or send a new *6-digit pincode* to refresh the list."
-    );
+    await sendText(from, "👆 Tap *Choose salon* in the menu above and pick a row — or send a new *6-digit pincode* to refresh the list.");
     return;
   }
 
@@ -643,7 +723,6 @@ async function handleInboundText(msg) {
         await sendPromptWithBackButton(from, "🏙️ Please enter a *city/area name* (example: Chennai / Anna Nagar).\n\nOr tap below to choose a different location method.");
         return;
       }
-      // 6-digit pincodes are also valid — fall through to location search below
     }
     if (looksLikeLocationSearchText(text)) {
       const searchInput = text.trim();
@@ -758,8 +837,6 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", (req, res) => {
   try {
     const entries = req.body?.entry || [];
-
-    // Acknowledge immediately so Meta does not retry (avoids duplicate outbound messages).
     res.sendStatus(200);
 
     setImmediate(() => {
@@ -801,10 +878,6 @@ app.post("/webhook", (req, res) => {
   }
 });
 
-/**
- * Production Flow endpoint: Meta sends encrypted JSON (see FLOW_PUBLIC_KEY_SETUP.md).
- * Configure this exact HTTPS URL in WhatsApp Manager → Flow → Endpoint (no trailing slash required).
- */
 async function handleEncryptedFlow(req, res) {
   const privateKeyPem = loadFlowPrivateKeyPem();
   if (!privateKeyPem) {
@@ -813,10 +886,7 @@ async function handleEncryptedFlow(req, res) {
   }
 
   try {
-    const { decryptedBody, aesKeyBuffer, initialVectorBuffer } = decryptFlowRequest(
-      req.body,
-      privateKeyPem
-    );
+    const { decryptedBody, aesKeyBuffer, initialVectorBuffer } = decryptFlowRequest(req.body, privateKeyPem);
     console.log("[flow] decrypted request", {
       action: decryptedBody?.action,
       screen: decryptedBody?.screen || "init",
@@ -827,25 +897,18 @@ async function handleEncryptedFlow(req, res) {
     return res.status(200).type("text/plain").send(encrypted);
   } catch (error) {
     console.error("Flow /flow error:", error.message);
-    if (error?.stack) {
-      console.error(error.stack);
-    }
+    if (error?.stack) console.error(error.stack);
     return res.status(421).type("text/plain").send("decryption_failed");
   }
 }
 
 app.get("/flow", (_req, res) => {
-  res.status(200).json({
-    ok: true,
-    service: "whatsapp-flow-endpoint",
-    post: "Send encrypted Flow requests (application/json) to this URL with POST."
-  });
+  res.status(200).json({ ok: true, service: "whatsapp-flow-endpoint" });
 });
 
 app.post("/flow", handleEncryptedFlow);
 app.post("/flow/", handleEncryptedFlow);
 
-/** Local / dev only: plaintext JSON (do not expose publicly). */
 app.post("/flow/data-exchange", async (req, res) => {
   if (process.env.FLOW_ALLOW_PLAINTEXT !== "true") {
     return res.status(404).json({ error: "not_found" });
@@ -859,13 +922,9 @@ app.post("/flow/data-exchange", async (req, res) => {
   }
 });
 
-// Mock manager approval callback endpoint.
 app.post("/internal/mock-approve", async (req, res) => {
   const { to, booking } = req.body || {};
-  if (!to || !booking) {
-    return res.status(400).json({ error: "to and booking are required" });
-  }
-
+  if (!to || !booking) return res.status(400).json({ error: "to and booking are required" });
   try {
     await sendBookingConfirmed(to, booking);
     return res.json({ ok: true, status: "CONFIRMED" });
@@ -902,20 +961,12 @@ app.get("/internal/appointments", async (_req, res) => {
 });
 
 app.post("/api/booking-status", async (req, res) => {
-  const {
-    mobile, status,
-    customerName, salonName, address, services, date, timeSlot, stylistName, mapsUrl, bookingId,
-    reason, alternateSlots
-  } = req.body || {};
+  const { mobile, status, customerName, salonName, address, services, date, timeSlot, stylistName, mapsUrl, bookingId, reason, alternateSlots } = req.body || {};
 
-  if (!mobile || !status) {
-    return res.status(400).json({ ok: false, error: "mobile and status are required" });
-  }
+  if (!mobile || !status) return res.status(400).json({ ok: false, error: "mobile and status are required" });
 
   const upper = String(status).toUpperCase();
-  if (upper !== "CONFIRMED" && upper !== "REJECTED") {
-    return res.status(400).json({ ok: false, error: "status must be CONFIRMED or REJECTED" });
-  }
+  if (upper !== "CONFIRMED" && upper !== "REJECTED") return res.status(400).json({ ok: false, error: "status must be CONFIRMED or REJECTED" });
 
   const digits = String(mobile).replace(/\D+/g, "");
   const to = digits.length === 10 ? `91${digits}` : digits;
@@ -935,8 +986,5 @@ app.post("/api/booking-status", async (req, res) => {
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Naturals WhatsApp bot listening on http://0.0.0.0:${config.port}`);
   console.log(`Database: ${dbPath}`);
-  console.log(`Flow endpoint: POST http://localhost:${config.port}/flow (use same path behind ngrok)`);
-  console.log(
-    `Welcome image URL resolved to: ${config.welcomeImageUrl} (set PUBLIC_BASE_URL=https://your-ngrok-host for /static/green-trends-welcome.png)`
-  );
+  console.log(`Admin WhatsApp: ${ADMIN_WHATSAPP}`);
 });
