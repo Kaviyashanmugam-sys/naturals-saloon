@@ -1,0 +1,766 @@
+{
+  "version": "7.1",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "ENTRY": [
+      "CATEGORY"
+    ],
+    "CATEGORY": [
+      "DATE_STYLIST"
+    ],
+    "DATE_STYLIST": [
+      "SLOT"
+    ],
+    "SLOT": [
+      "REVIEW"
+    ],
+    "REVIEW": []
+  },
+  "screens": [
+    {
+      "id": "ENTRY",
+      "title": "Naturals Salon",
+      "data": {
+        "customer_name": {
+          "type": "string",
+          "__example__": "Aarthi Kumar"
+        },
+        "customer_mobile": {
+          "type": "string",
+          "__example__": "919876543210"
+        },
+        "customer_email": {
+          "type": "string",
+          "__example__": ""
+        },
+        "gender_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "female",
+              "title": "Female"
+            }
+          ]
+        },
+        "salon_id": {
+          "type": "string",
+          "__example__": "1158"
+        },
+        "salon_name": {
+          "type": "string",
+          "__example__": "Naturals - Neelankarai"
+        },
+        "salon_address_line": {
+          "type": "string",
+          "__example__": "Neelankarai, Chennai"
+        },
+        "maps_url": {
+          "type": "string",
+          "__example__": "https://maps.google.com/"
+        },
+        "salon_latitude": {
+          "type": "string",
+          "__example__": "12.9"
+        },
+        "salon_longitude": {
+          "type": "string",
+          "__example__": "80.2"
+        },
+        "salon_rating": {
+          "type": "string",
+          "__example__": "4.9"
+        },
+        "salon_review_count": {
+          "type": "string",
+          "__example__": "210"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "SG9zdCBub3QgaW4gYWxsb3dsaXN0OiByZXMuY2xvdWRpbmFyeS5jb20uIEFkZCB0aGlzIGhvc3QgdG8geW91ciBuZXR3b3JrIGVncmVzcyBzZXR0aW5ncyB0byBhbGxvdyBhY2Nlc3Mu",
+            "height": 200,
+            "scale-type": "contain",
+            "alt-text": "Naturals Salon"
+          },
+          {
+            "type": "Form",
+            "name": "entry_form",
+            "init-values": {
+              "customer_name": "${data.customer_name}",
+              "customer_mobile": "${data.customer_mobile}",
+              "customer_email": "${data.customer_email}"
+            },
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "UNISEX HAIR & STYLE SALON"
+              },
+              {
+                "type": "TextBody",
+                "text": "Step 1/4 \u2014 Gender & your details"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.salon_name}"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.salon_address_line}"
+              },
+              {
+                "type": "TextBody",
+                "text": "\u2b50 ${data.salon_rating} \u00b7 ${data.salon_review_count} Reviews"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "gender",
+                "label": "Gender",
+                "required": true,
+                "data-source": "${data.gender_options}"
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_name",
+                "label": "Full Name",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_mobile",
+                "label": "Mobile Number",
+                "required": true,
+                "input-type": "phone"
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_email",
+                "label": "Email",
+                "required": false,
+                "input-type": "email"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "customer_name": "${form.customer_name}",
+                    "customer_mobile": "${form.customer_mobile}",
+                    "customer_email": "${form.customer_email}",
+                    "gender": "${form.gender}",
+                    "salon_id": "${data.salon_id}",
+                    "salon_name": "${data.salon_name}",
+                    "salon_address_line": "${data.salon_address_line}",
+                    "maps_url": "${data.maps_url}",
+                    "salon_latitude": "${data.salon_latitude}",
+                    "salon_longitude": "${data.salon_longitude}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CATEGORY",
+      "title": "Naturals Salon",
+      "data": {
+        "customer_name": {
+          "type": "string",
+          "__example__": "Aarthi Kumar"
+        },
+        "customer_mobile": {
+          "type": "string",
+          "__example__": "919876543210"
+        },
+        "customer_email": {
+          "type": "string",
+          "__example__": ""
+        },
+        "gender": {
+          "type": "string",
+          "__example__": "female"
+        },
+        "salon_id": {
+          "type": "string",
+          "__example__": "1158"
+        },
+        "salon_name": {
+          "type": "string",
+          "__example__": "Naturals - Neelankarai"
+        },
+        "salon_address_line": {
+          "type": "string",
+          "__example__": "Neelankarai, Chennai"
+        },
+        "maps_url": {
+          "type": "string",
+          "__example__": "https://maps.google.com/"
+        },
+        "salon_latitude": {
+          "type": "string",
+          "__example__": "12.9"
+        },
+        "salon_longitude": {
+          "type": "string",
+          "__example__": "80.2"
+        },
+        "service_blob": {
+          "type": "string",
+          "__example__": ""
+        },
+        "selected_categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "__example__": [
+            "haircut",
+            "facial"
+          ]
+        },
+        "category_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "f_hair_spa",
+              "title": "Hair Spa & Treatment"
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "SG9zdCBub3QgaW4gYWxsb3dsaXN0OiByZXMuY2xvdWRpbmFyeS5jb20uIEFkZCB0aGlzIGhvc3QgdG8geW91ciBuZXR3b3JrIGVncmVzcyBzZXR0aW5ncyB0byBhbGxvdyBhY2Nlc3Mu",
+            "height": 200,
+            "scale-type": "contain",
+            "alt-text": "Naturals Salon"
+          },
+          {
+            "type": "Form",
+            "name": "category_form",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "UNISEX HAIR & STYLE SALON"
+              },
+              {
+                "type": "TextBody",
+                "text": "Step 2/4 \u2014 Select services"
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "selected_categories",
+                "label": "Select services",
+                "required": true,
+                "data-source": "${data.category_options}"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "customer_name": "${data.customer_name}",
+                    "customer_mobile": "${data.customer_mobile}",
+                    "customer_email": "${data.customer_email}",
+                    "gender": "${data.gender}",
+                    "salon_id": "${data.salon_id}",
+                    "salon_name": "${data.salon_name}",
+                    "salon_address_line": "${data.salon_address_line}",
+                    "maps_url": "${data.maps_url}",
+                    "salon_latitude": "${data.salon_latitude}",
+                    "salon_longitude": "${data.salon_longitude}",
+                    "service_blob": "${data.service_blob}",
+                    "selected_categories": "${form.selected_categories}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "DATE_STYLIST",
+      "title": "Naturals Salon",
+      "data": {
+        "customer_name": {
+          "type": "string",
+          "__example__": "Aarthi Kumar"
+        },
+        "customer_mobile": {
+          "type": "string",
+          "__example__": "919876543210"
+        },
+        "customer_email": {
+          "type": "string",
+          "__example__": ""
+        },
+        "salon_id": {
+          "type": "string",
+          "__example__": "1158"
+        },
+        "salon_name": {
+          "type": "string",
+          "__example__": "Naturals - Neelankarai"
+        },
+        "salon_address_line": {
+          "type": "string",
+          "__example__": "Neelankarai, Chennai"
+        },
+        "maps_url": {
+          "type": "string",
+          "__example__": "https://maps.google.com/"
+        },
+        "salon_latitude": {
+          "type": "string",
+          "__example__": "12.9"
+        },
+        "salon_longitude": {
+          "type": "string",
+          "__example__": "80.2"
+        },
+        "gender": {
+          "type": "string",
+          "__example__": "female"
+        },
+        "service_blob": {
+          "type": "string",
+          "__example__": ""
+        },
+        "services_pretty": {
+          "type": "string",
+          "__example__": ""
+        },
+        "min_booking_date": {
+          "type": "string",
+          "__example__": "2026-06-24"
+        },
+        "stylist_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "0",
+              "title": "No Preference"
+            }
+          ]
+        },
+        "slot_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "04:30 PM",
+              "title": "04:30 PM"
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "SG9zdCBub3QgaW4gYWxsb3dsaXN0OiByZXMuY2xvdWRpbmFyeS5jb20uIEFkZCB0aGlzIGhvc3QgdG8geW91ciBuZXR3b3JrIGVncmVzcyBzZXR0aW5ncyB0byBhbGxvdyBhY2Nlc3Mu",
+            "height": 200,
+            "scale-type": "contain",
+            "alt-text": "Naturals Salon"
+          },
+          {
+            "type": "Form",
+            "name": "date_stylist_form",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "UNISEX HAIR & STYLE SALON"
+              },
+              {
+                "type": "TextBody",
+                "text": "Step 3/5 \u2014 Date & stylist"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.salon_name}"
+              },
+              {
+                "type": "DatePicker",
+                "name": "booking_date",
+                "label": "Appointment date",
+                "required": true,
+                "min-date": "${data.min_booking_date}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "stylist_id",
+                "label": "Stylist preference",
+                "required": false,
+                "data-source": "${data.stylist_options}"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "customer_name": "${data.customer_name}",
+                    "customer_mobile": "${data.customer_mobile}",
+                    "customer_email": "${data.customer_email}",
+                    "salon_id": "${data.salon_id}",
+                    "salon_name": "${data.salon_name}",
+                    "salon_address_line": "${data.salon_address_line}",
+                    "maps_url": "${data.maps_url}",
+                    "salon_latitude": "${data.salon_latitude}",
+                    "salon_longitude": "${data.salon_longitude}",
+                    "gender": "${data.gender}",
+                    "service_blob": "${data.service_blob}",
+                    "services_pretty": "${data.services_pretty}",
+                    "booking_date": "${form.booking_date}",
+                    "stylist_id": "${form.stylist_id}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SLOT",
+      "title": "Naturals Salon",
+      "data": {
+        "customer_name": {
+          "type": "string",
+          "__example__": "Aarthi Kumar"
+        },
+        "customer_mobile": {
+          "type": "string",
+          "__example__": "919876543210"
+        },
+        "customer_email": {
+          "type": "string",
+          "__example__": ""
+        },
+        "salon_id": {
+          "type": "string",
+          "__example__": "1158"
+        },
+        "salon_name": {
+          "type": "string",
+          "__example__": "Naturals - Neelankarai"
+        },
+        "salon_address_line": {
+          "type": "string",
+          "__example__": "Neelankarai, Chennai"
+        },
+        "maps_url": {
+          "type": "string",
+          "__example__": "https://maps.google.com/"
+        },
+        "salon_latitude": {
+          "type": "string",
+          "__example__": "12.9"
+        },
+        "salon_longitude": {
+          "type": "string",
+          "__example__": "80.2"
+        },
+        "gender": {
+          "type": "string",
+          "__example__": "female"
+        },
+        "service_blob": {
+          "type": "string",
+          "__example__": ""
+        },
+        "services_pretty": {
+          "type": "string",
+          "__example__": ""
+        },
+        "booking_date": {
+          "type": "string",
+          "__example__": "2026-06-24"
+        },
+        "stylist_id": {
+          "type": "string",
+          "__example__": "none"
+        },
+        "stylist_name": {
+          "type": "string",
+          "__example__": "No Preference"
+        },
+        "slot_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "04:45 PM",
+              "title": "04:45 PM"
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "SG9zdCBub3QgaW4gYWxsb3dsaXN0OiByZXMuY2xvdWRpbmFyeS5jb20uIEFkZCB0aGlzIGhvc3QgdG8geW91ciBuZXR3b3JrIGVncmVzcyBzZXR0aW5ncyB0byBhbGxvdyBhY2Nlc3Mu",
+            "height": 200,
+            "scale-type": "contain",
+            "alt-text": "Naturals Salon"
+          },
+          {
+            "type": "Form",
+            "name": "slot_form",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "UNISEX HAIR & STYLE SALON"
+              },
+              {
+                "type": "TextBody",
+                "text": "Step 4/5 \u2014 Pick available slot"
+              },
+              {
+                "type": "TextBody",
+                "text": "Selected stylist:"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.stylist_name}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "slot_id",
+                "label": "Available slots",
+                "required": true,
+                "data-source": "${data.slot_options}"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "customer_name": "${data.customer_name}",
+                    "customer_mobile": "${data.customer_mobile}",
+                    "customer_email": "${data.customer_email}",
+                    "salon_id": "${data.salon_id}",
+                    "salon_name": "${data.salon_name}",
+                    "salon_address_line": "${data.salon_address_line}",
+                    "maps_url": "${data.maps_url}",
+                    "salon_latitude": "${data.salon_latitude}",
+                    "salon_longitude": "${data.salon_longitude}",
+                    "gender": "${data.gender}",
+                    "service_blob": "${data.service_blob}",
+                    "services_pretty": "${data.services_pretty}",
+                    "booking_date": "${data.booking_date}",
+                    "stylist_id": "${data.stylist_id}",
+                    "stylist_name": "${data.stylist_name}",
+                    "slot_id": "${form.slot_id}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "REVIEW",
+      "title": "Naturals Salon",
+      "terminal": true,
+      "data": {
+        "customer_name": {
+          "type": "string",
+          "__example__": "Aarthi Kumar"
+        },
+        "customer_mobile": {
+          "type": "string",
+          "__example__": "919876543210"
+        },
+        "customer_email": {
+          "type": "string",
+          "__example__": ""
+        },
+        "salon_id": {
+          "type": "string",
+          "__example__": "1158"
+        },
+        "salon_name": {
+          "type": "string",
+          "__example__": "Naturals - Neelankarai"
+        },
+        "salon_address_line": {
+          "type": "string",
+          "__example__": "Neelankarai, Chennai"
+        },
+        "maps_url": {
+          "type": "string",
+          "__example__": "https://maps.google.com/"
+        },
+        "salon_latitude": {
+          "type": "string",
+          "__example__": "12.9"
+        },
+        "salon_longitude": {
+          "type": "string",
+          "__example__": "80.2"
+        },
+        "gender": {
+          "type": "string",
+          "__example__": "female"
+        },
+        "service_blob": {
+          "type": "string",
+          "__example__": ""
+        },
+        "service_item_pretty": {
+          "type": "string",
+          "__example__": ""
+        },
+        "booking_date": {
+          "type": "string",
+          "__example__": "2026-06-24"
+        },
+        "stylist_id": {
+          "type": "string",
+          "__example__": "none"
+        },
+        "stylist_name": {
+          "type": "string",
+          "__example__": "No Preference"
+        },
+        "slot_id": {
+          "type": "string",
+          "__example__": "04:45 PM"
+        },
+        "review_summary": {
+          "type": "string",
+          "__example__": ""
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "SG9zdCBub3QgaW4gYWxsb3dsaXN0OiByZXMuY2xvdWRpbmFyeS5jb20uIEFkZCB0aGlzIGhvc3QgdG8geW91ciBuZXR3b3JrIGVncmVzcyBzZXR0aW5ncyB0byBhbGxvdyBhY2Nlc3Mu",
+            "height": 200,
+            "scale-type": "contain",
+            "alt-text": "Naturals Salon"
+          },
+          {
+            "type": "Form",
+            "name": "review_form",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "UNISEX HAIR & STYLE SALON"
+              },
+              {
+                "type": "TextBody",
+                "text": "Step 5/5 \u2014 Confirm booking"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.review_summary}"
+              },
+              {
+                "type": "TextBody",
+                "text": "After Confirm, you will get your booking summary and status in this chat."
+              },
+              {
+                "type": "Footer",
+                "label": "Confirm",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "customer_name": "${data.customer_name}",
+                    "customer_mobile": "${data.customer_mobile}",
+                    "customer_email": "${data.customer_email}",
+                    "salon_id": "${data.salon_id}",
+                    "salon_name": "${data.salon_name}",
+                    "salon_address_line": "${data.salon_address_line}",
+                    "maps_url": "${data.maps_url}",
+                    "salon_latitude": "${data.salon_latitude}",
+                    "salon_longitude": "${data.salon_longitude}",
+                    "gender": "${data.gender}",
+                    "service_blob": "${data.service_blob}",
+                    "service_item_pretty": "${data.service_item_pretty}",
+                    "booking_date": "${data.booking_date}",
+                    "stylist_id": "${data.stylist_id}",
+                    "stylist_name": "${data.stylist_name}",
+                    "slot_id": "${data.slot_id}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

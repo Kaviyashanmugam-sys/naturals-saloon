@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 function resolveWelcomeImageUrl() {
-  if (process.env.WELCOME_IMAGE_URL) {
+  if (process.env.WELCOME_IMAGE_URL) {6
     return process.env.WELCOME_IMAGE_URL;
   }
   const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
