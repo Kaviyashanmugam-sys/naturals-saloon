@@ -1,10 +1,8 @@
 // src/dailyReportScheduler.js
-// Naturals Salon — Daily Report Scheduler
-// Sends HTML report to admin numbers every day at 9:00 PM IST
-// Uses node-cron for scheduling; falls back to setTimeout if cron unavailable
+// Naturals Salon — Daily Report Scheduler with PDF via PDFShift
 
 import { getDailyStats } from "./database.js";
-import { buildReportBuffer } from "./reportGenerator.js";
+import { buildDailyReportHtml } from "./reportGenerator.js";
 import { config } from "./config.js";
 import { logWebhook, logWebhookError } from "./webhookLog.js";
 
@@ -14,7 +12,7 @@ const ADMIN_NUMBERS = new Set([
   "917708420110"
 ]);
 
-// ── WhatsApp send helpers ─────────────────────────────────────
+// ── WhatsApp Helpers ──────────────────────────────────────────
 
 async function sendWhatsAppText(to, body) {
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
@@ -31,48 +29,27 @@ async function sendWhatsAppText(to, body) {
       text: { body }
     })
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`WhatsApp text failed: ${err.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(`WA text failed: ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
 
-// Upload media (HTML file as document) → get media_id
-async function uploadReportMedia(htmlBuffer, filename) {
+async function uploadMediaBuffer(buffer, filename, mimeType) {
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/media`;
-
-  // Build multipart form
-  const { FormData, Blob } = await import("node:buffer").catch(() => {
-    // Fallback for older Node — use global
-    return { FormData: global.FormData, Blob: global.Blob };
-  });
-
-  // Use native fetch FormData (Node 18+)
   const form = new globalThis.FormData();
   form.append("messaging_product", "whatsapp");
-  form.append(
-    "file",
-    new globalThis.Blob([htmlBuffer], { type: "text/html" }),
-    filename
-  );
-  form.append("type", "text/html");
+  form.append("file", new globalThis.Blob([buffer], { type: mimeType }), filename);
+  form.append("type", mimeType);
 
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.whatsappToken}` },
     body: form
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Media upload failed: ${err.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(`Media upload failed: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
-  return data.id; // media_id
+  return data.id;
 }
 
-// Send document via media_id
 async function sendWhatsAppDocument(to, mediaId, filename, caption) {
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
   const res = await fetch(url, {
@@ -85,21 +62,137 @@ async function sendWhatsAppDocument(to, mediaId, filename, caption) {
       messaging_product: "whatsapp",
       to,
       type: "document",
-      document: {
-        id: mediaId,
-        filename,
-        caption
-      }
+      document: { id: mediaId, filename, caption }
     })
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`WhatsApp document failed: ${err.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(`WA document failed: ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
 
-// ── Core report sender ────────────────────────────────────────
+// ── PDF Generation via PDFShift ───────────────────────────────
+
+async function generatePdfFromHtml(html) {
+  const apiKey = process.env.PDFSHIFT_API_KEY;
+  if (!apiKey) throw new Error("PDFSHIFT_API_KEY not set");
+
+  const credentials = Buffer.from(`api:${apiKey}`).toString("base64");
+
+  const res = await fetch("https://api.pdfshift.io/v3/convert/pdf", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${credentials}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      source: html,
+      landscape: false,
+      use_print: false,
+      format: "A4",
+      margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" }
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`PDFShift failed (${res.status}): ${err.slice(0, 300)}`);
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// ── Beautiful WhatsApp Text Summary ──────────────────────────
+
+function buildWhatsAppSummary(stats) {
+  const {
+    date, total, completed, pending, cancelled, noShow,
+    walkIn, online, completionRate, pendingRate,
+    cancelledRate, noShowRate, peakHour, peakCount,
+    serviceBreakdown, staffBreakdown, topSalons
+  } = stats;
+
+  const dateObj = new Date(date + "T00:00:00");
+  const dateFormatted = dateObj.toLocaleDateString("en-IN", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric"
+  });
+
+  function bar(pct) {
+    const filled = Math.round(Number(pct) / 10);
+    return "▓".repeat(filled) + "░".repeat(10 - filled);
+  }
+
+  const serviceLines = serviceBreakdown.slice(0, 5).map((s, i) =>
+    `  ${i + 1}. ${s.name}\n     📋 ${s.total}  ✅ ${s.completed}  ⏳ ${s.pending}`
+  ).join("\n") || "  No services today";
+
+  const staffLines = staffBreakdown.slice(0, 5).map((s, i) =>
+    `  ${i + 1}. 💇 ${s.name} — ${s.served} served (${s.completed} done)`
+  ).join("\n") || "  No staff data";
+
+  const salonLines = topSalons.slice(0, 3).map((s, i) =>
+    `  ${i + 1}. 📍 ${s.name} — ${s.count} bookings`
+  ).join("\n") || "  No data";
+
+  const now = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit", minute: "2-digit", hour12: true
+  });
+
+  return `╔══════════════════════════╗
+║  📊 *NATURALS SALON*         ║
+║  *Daily Business Report*     ║
+╚══════════════════════════╝
+
+🗓️ *${dateFormatted}*
+🕐 Generated: ${now} IST
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 *BOOKING SUMMARY*
+
+📋 Total Bookings   *${String(total).padStart(3)}*
+✅ Completed        *${String(completed).padStart(3)}*
+⏳ Pending          *${String(pending).padStart(3)}*
+❌ Cancelled        *${String(cancelled).padStart(3)}*
+👻 No Show          *${String(noShow).padStart(3)}*
+🚶 Walk-ins         *${String(walkIn).padStart(3)}*
+📱 Online (WA)      *${String(online).padStart(3)}*
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 *PERFORMANCE*
+
+✅ Completion   ${bar(completionRate)} *${completionRate}%*
+⏳ Pending      ${bar(pendingRate)} *${pendingRate}%*
+❌ Cancelled    ${bar(cancelledRate)} *${cancelledRate}%*
+👻 No Show      ${bar(noShowRate)} *${noShowRate}%*
+
+🕐 Peak Hour: *${peakHour}*${peakCount > 0 ? ` (${peakCount} bookings)` : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💇 *TOP SERVICES*
+
+${serviceLines}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👩‍🔧 *STAFF PERFORMANCE*
+
+${staffLines}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏪 *TOP SALONS TODAY*
+
+${salonLines}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+_🤖 Auto-generated · No customer data_
+_📄 PDF report attached above_`;
+}
+
+// ── Core Report Sender ────────────────────────────────────────
 
 export async function sendDailyReport(dateStr) {
   const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
@@ -108,82 +201,79 @@ export async function sendDailyReport(dateStr) {
   logWebhook("daily_report", `building report for ${today}`);
 
   const stats = getDailyStats(today);
-  const htmlBuffer = buildReportBuffer(stats);
-  const filename = `naturals-report-${today}.html`;
+  const summaryText = buildWhatsAppSummary(stats);
+  const filename = `naturals-report-${today}.pdf`;
 
-  const summaryText =
-    `📊 *Naturals Salon — Daily Business Report*\n` +
-    `🗓️ *Date:* ${today}\n\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `📋 *Total Bookings:* ${stats.total}\n` +
-    `✅ *Completed:* ${stats.completed} (${stats.completionRate}%)\n` +
-    `⏳ *Pending:* ${stats.pending} (${stats.pendingRate}%)\n` +
-    `❌ *Cancelled:* ${stats.cancelled}\n` +
-    `👻 *No Show:* ${stats.noShow}\n` +
-    `🚶 *Walk-ins:* ${stats.walkIn}\n` +
-    `📱 *Online (WhatsApp):* ${stats.online}\n` +
-    `🕐 *Peak Hour:* ${stats.peakHour}\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `_Full report attached as HTML file. Open in browser for best view._`;
+  // Try PDF generation
+  let pdfBuffer = null;
+  let pdfMediaId = null;
 
-  let mediaId = null;
-  try {
-    mediaId = await uploadReportMedia(htmlBuffer, filename);
-    logWebhook("daily_report", `media uploaded id=${mediaId}`);
-  } catch (uploadErr) {
-    logWebhookError("daily_report media upload", uploadErr);
+  if (process.env.PDFSHIFT_API_KEY) {
+    try {
+      const html = buildDailyReportHtml(stats);
+      logWebhook("daily_report", "generating PDF via PDFShift...");
+      pdfBuffer = await generatePdfFromHtml(html);
+      logWebhook("daily_report", `PDF generated: ${pdfBuffer.length} bytes`);
+    } catch (pdfErr) {
+      logWebhookError("daily_report PDF generation", pdfErr);
+    }
+
+    if (pdfBuffer) {
+      try {
+        pdfMediaId = await uploadMediaBuffer(pdfBuffer, filename, "application/pdf");
+        logWebhook("daily_report", `PDF uploaded: media_id=${pdfMediaId}`);
+      } catch (uploadErr) {
+        logWebhookError("daily_report PDF upload", uploadErr);
+      }
+    }
+  } else {
+    logWebhook("daily_report", "PDFSHIFT_API_KEY not set — text only");
   }
 
+  // Send to all admins
   for (const adminNum of ADMIN_NUMBERS) {
     try {
-      // Always send text summary
-      await sendWhatsAppText(adminNum, summaryText);
-      logWebhook("daily_report", `text summary sent to ${adminNum}`);
-
-      // Send HTML file if upload succeeded
-      if (mediaId) {
+      // Send PDF first if available
+      if (pdfMediaId) {
         await sendWhatsAppDocument(
           adminNum,
-          mediaId,
+          pdfMediaId,
           filename,
-          `Naturals Salon Daily Report — ${today}`
+          `📄 Naturals Salon Daily Report — ${today}`
         );
-        logWebhook("daily_report", `HTML report sent to ${adminNum}`);
+        logWebhook("daily_report", `PDF sent to ${adminNum}`);
       }
+
+      // Always send text summary
+      await sendWhatsAppText(adminNum, summaryText);
+      logWebhook("daily_report", `summary sent to ${adminNum}`);
+
     } catch (sendErr) {
       logWebhookError(`daily_report send to ${adminNum}`, sendErr);
     }
   }
 
-  logWebhook("daily_report", `done for ${today}`);
+  logWebhook("daily_report", `done for ${today} total=${stats.total}`);
   return stats;
 }
 
 // ── Scheduler ────────────────────────────────────────────────
 
 export function startDailyReportScheduler() {
-  // Try node-cron first
   tryStartWithCron();
 }
 
 async function tryStartWithCron() {
   try {
     const cron = await import("node-cron");
-
-    // 9:00 PM IST = 15:30 UTC (IST is UTC+5:30)
-    // Cron: second minute hour day month weekday
-    // "30 15 * * *" = every day at 15:30 UTC = 9:00 PM IST
+    // 9:00 PM IST = 15:30 UTC
     const schedule = process.env.REPORT_CRON || "30 15 * * *";
-
-    if (!cron.default.validate(schedule)) {
-      console.warn("[scheduler] Invalid REPORT_CRON:", schedule, "— using default 9PM IST");
-    }
 
     cron.default.schedule(schedule, async () => {
       console.log("[scheduler] Daily report triggered at", new Date().toISOString());
       try {
         const stats = await sendDailyReport();
-        console.log(`[scheduler] Report sent — total=${stats.total} date=${stats.date}`);
+        console.log(`[scheduler] Done — total=${stats.total} date=${stats.date}`);
       } catch (err) {
         logWebhookError("scheduler daily_report", err);
       }
@@ -191,7 +281,7 @@ async function tryStartWithCron() {
 
     console.log(`[scheduler] Daily report scheduled: ${schedule} UTC (9 PM IST)`);
   } catch (cronErr) {
-    console.warn("[scheduler] node-cron not available, using setTimeout fallback:", cronErr.message);
+    console.warn("[scheduler] node-cron unavailable, using setTimeout:", cronErr.message);
     scheduleWithTimeout();
   }
 }
@@ -199,29 +289,26 @@ async function tryStartWithCron() {
 function scheduleWithTimeout() {
   function msUntilNext9PMIST() {
     const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
-    const now = new Date();
-    const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
     const target = new Date(istNow);
-    target.setHours(21, 0, 0, 0); // 9 PM
+    target.setHours(21, 0, 0, 0);
     if (target <= istNow) target.setDate(target.getDate() + 1);
     return target.getTime() - istNow.getTime();
   }
 
   function scheduleNext() {
     const ms = msUntilNext9PMIST();
-    const hours = (ms / 3600000).toFixed(1);
-    console.log(`[scheduler] Next report in ${hours}h (setTimeout fallback)`);
+    console.log(`[scheduler] Next report in ${(ms / 3600000).toFixed(1)}h`);
     setTimeout(async () => {
       try {
         const stats = await sendDailyReport();
-        console.log(`[scheduler] Report sent — total=${stats.total} date=${stats.date}`);
+        console.log(`[scheduler] Done — total=${stats.total}`);
       } catch (err) {
         logWebhookError("scheduler daily_report (timeout)", err);
       } finally {
-        scheduleNext(); // reschedule for next day
+        scheduleNext();
       }
     }, ms);
   }
-
   scheduleNext();
 }

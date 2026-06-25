@@ -280,9 +280,9 @@ export async function fetchSlots({ storeId, aptDate, empId }) {
   const fallback = [];
   for (let h = 10; h < 20; h += 1) {
     for (const mm of ["00", "30"]) {
-      const d = new Date();
-      d.setHours(h, Number(mm), 0, 0);
-      const title = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+      const ampm = h >= 12 ? "PM" : "AM";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const title = `${String(h12).padStart(2, "0")}:${mm} ${ampm}`;
       fallback.push({ id: title, title });
     }
   }

@@ -690,9 +690,8 @@ async function handleInboundText(msg) {
     }
     if (norm === "sendreport" || norm === "dailyreport" || norm === "send report") {
       try {
-        await sendText(from, "⏳ Generating today\'s business report... Please wait.");
-        const stats = await sendDailyReport();
-        await sendText(from, `✅ Report sent!\n\n📋 Total: ${stats.total}\n✅ Completed: ${stats.completed}\n⏳ Pending: ${stats.pending}\n❌ Cancelled: ${stats.cancelled}`);
+        await sendText(from, "⏳ Generating PDF report... Please wait a moment.");
+        await sendDailyReport();
       } catch (e) {
         logWebhookError("sendreport admin cmd", e);
         await sendText(from, "❌ Report generation failed: " + e.message);
