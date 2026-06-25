@@ -1,3 +1,4 @@
+
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -77,7 +78,6 @@ startDailyReportScheduler();
 // ─── ADMIN CONFIG ───────────────────────────────────────────
 const ADMIN_NUMBERS = new Set([
   process.env.ADMIN_WHATSAPP || "917904307757",
-  "917904307757",
 ]);
 
 function delay(ms) {
