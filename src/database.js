@@ -440,7 +440,7 @@ export function getDailyStats(dateStr) {
   const noShowRate     = total > 0 ? ((noShow    / total) * 100).toFixed(1) : "0.0";
 
   return {
-    date, total, completed, pending, cancelled, noShow, walkIn, online,
+    date: today, total, completed, pending, cancelled, noShow, walkIn, online,
     completionRate, pendingRate, cancelledRate, noShowRate,
     peakHour: formatHour(peakHour), peakCount, hourlyMap,
     serviceBreakdown: Object.entries(serviceMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
