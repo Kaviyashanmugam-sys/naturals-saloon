@@ -7,9 +7,8 @@ import { config } from "./config.js";
 import { logWebhook, logWebhookError } from "./webhookLog.js";
 
 const ADMIN_NUMBERS = new Set([
-  process.env.ADMIN_WHATSAPP || "917708420110",
-  "917904307757",
-  "917708420110"
+  process.env.ADMIN_WHATSAPP || "7904307757",
+  "917904307757"
 ]);
 
 // ── WhatsApp Helpers ──────────────────────────────────────────
@@ -150,13 +149,13 @@ function buildWhatsAppSummary(stats) {
 
 📌 *BOOKING SUMMARY*
 
-📋 Total Bookings   *${String(total).padStart(3)}*
-✅ Completed        *${String(completed).padStart(3)}*
-⏳ Pending          *${String(pending).padStart(3)}*
-❌ Cancelled        *${String(cancelled).padStart(3)}*
-👻 No Show          *${String(noShow).padStart(3)}*
-🚶 Walk-ins         *${String(walkIn).padStart(3)}*
-📱 Online (WA)      *${String(online).padStart(3)}*
+📋 Total Bookings:   *${total}*
+✅ Completed:        *${completed}*
+⏳ Pending:          *${pending}*
+❌ Cancelled:        *${cancelled}*
+👻 No Show:          *${noShow}*
+🚶 Walk-ins:         *${walkIn}*
+📱 Online (WA):      *${online}*
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -199,6 +198,10 @@ export async function sendDailyReport(dateStr) {
   const today = dateStr || new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
 
   logWebhook("daily_report", `building report for ${today}`);
+  console.log("=== PDF REPORT DEBUG ===");
+  console.log("PDFSHIFT_KEY exists:", !!process.env.PDFSHIFT_API_KEY);
+  console.log("PDFSHIFT_KEY start:", (process.env.PDFSHIFT_API_KEY||"MISSING").slice(0,10));
+  console.log("========================");
 
   const stats = getDailyStats(today);
   const summaryText = buildWhatsAppSummary(stats);
