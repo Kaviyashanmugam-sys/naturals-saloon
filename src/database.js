@@ -1316,3 +1316,4 @@ function initDefaultRatings() {
       updatedAt: new Date().toISOString()
     };
   }
+}
