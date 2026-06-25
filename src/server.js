@@ -76,9 +76,8 @@ startDailyReportScheduler();
 
 // ─── ADMIN CONFIG ───────────────────────────────────────────
 const ADMIN_NUMBERS = new Set([
-  process.env.ADMIN_WHATSAPP || "917708420110",
+  process.env.ADMIN_WHATSAPP || "917904307757",
   "917904307757",
-  "917708420110"
 ]);
 
 function delay(ms) {
