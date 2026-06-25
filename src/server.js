@@ -10,6 +10,7 @@ import {
   listAppointments,
   listBookings,
   listUsers,
+  getDailyStats,
   setSalonRating,
   getSalonRating,
   listSalonRatings,
@@ -62,12 +63,16 @@ import {
   sendText
 } from "./whatsapp.js";
 import { isAlreadyProcessedInbound } from "./webhookDedupe.js";
+import { startDailyReportScheduler, sendDailyReport } from "./dailyReportScheduler.js";
 import { logWebhook, logWebhookError } from "./webhookLog.js";
 import appointmentConfirmationRouter from "./appointmentConfirmationApi.js";
 import feedbackRequestRouter from "./feedbackRequestApi.js";
 
 validateConfig();
 const dbPath = await initDatabase();
+
+// ─── START DAILY REPORT SCHEDULER ───────────────────────────
+startDailyReportScheduler();
 
 // ─── ADMIN CONFIG ───────────────────────────────────────────
 const ADMIN_NUMBERS = new Set([
@@ -681,7 +686,18 @@ async function handleInboundText(msg) {
       return;
     }
     if (norm === "help" || norm === "admin") {
-      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
+      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n📄 *sendreport* — Send today\'s PDF report now\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
+      return;
+    }
+    if (norm === "sendreport" || norm === "dailyreport" || norm === "send report") {
+      try {
+        await sendText(from, "⏳ Generating today\'s business report... Please wait.");
+        const stats = await sendDailyReport();
+        await sendText(from, `✅ Report sent!\n\n📋 Total: ${stats.total}\n✅ Completed: ${stats.completed}\n⏳ Pending: ${stats.pending}\n❌ Cancelled: ${stats.cancelled}`);
+      } catch (e) {
+        logWebhookError("sendreport admin cmd", e);
+        await sendText(from, "❌ Report generation failed: " + e.message);
+      }
       return;
     }
   }

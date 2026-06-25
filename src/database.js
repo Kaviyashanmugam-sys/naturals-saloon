@@ -1,4 +1,119 @@
-const EMPTY_STATE = { onboarding: {}, flowSessions: {}, bookings: [], notificationLogs: [], feedbackSessions: {}, feedbacks: [], salonRatings: {} };
+// src/database.js
+// Naturals Salon — MongoDB + In-Memory Hybrid Database
+// MongoDB உண்டா → persist, இல்லன்னா → in-memory fallback
+
+import mongoose from "mongoose";
+
+// ─── CONNECTION ──────────────────────────────────────────────
+let isMongoConnected = false;
+
+async function connectMongo() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.log("[db] MONGODB_URI not set — using in-memory");
+    return false;
+  }
+  try {
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 8000,
+      dbName: "naturals"
+    });
+    isMongoConnected = true;
+    console.log("[db] ✅ MongoDB connected:", mongoose.connection.name);
+    return true;
+  } catch (e) {
+    console.warn("[db] ⚠️ MongoDB connection failed, using in-memory:", e.message);
+    return false;
+  }
+}
+
+// ─── MONGOOSE SCHEMAS ────────────────────────────────────────
+
+const BookingSchema = new mongoose.Schema({
+  bookingId:       { type: String, unique: true, index: true },
+  status:          { type: String, default: "PENDING_APPROVAL" },
+  fullName:        String,
+  mobile:          { type: String, index: true },
+  email:           String,
+  salonId:         String,
+  salonName:       String,
+  mapsUrl:         String,
+  gender:          String,
+  serviceCategory: String,
+  serviceItem:     String,
+  serviceBlob:     String,
+  date:            { type: String, index: true },
+  stylistName:     String,
+  timeSlot:        String,
+  isWalkIn:        { type: Boolean, default: false },
+  createdAt:       { type: String },
+  updatedAt:       { type: String }
+}, { timestamps: false });
+
+const OnboardingSchema = new mongoose.Schema({
+  phoneNumber: { type: String, unique: true, index: true },
+  state:       mongoose.Schema.Types.Mixed,
+  updatedAt:   String
+});
+
+const FlowSessionSchema = new mongoose.Schema({
+  flowToken: { type: String, unique: true, index: true },
+  session:   mongoose.Schema.Types.Mixed,
+  updatedAt: String
+});
+
+const FeedbackSchema = new mongoose.Schema({
+  mobile:             String,
+  rating:             Number,
+  customer_name:      String,
+  branch_name:        String,
+  appointment_id:     mongoose.Schema.Types.Mixed,
+  feedback_text:      String,
+  staff_performance:  String,
+  amenities_rating:   String,
+  overall_experience: String,
+  google_review_shown: Boolean,
+  savedAt:            String
+});
+
+const FeedbackSessionSchema = new mongoose.Schema({
+  mobile:    { type: String, unique: true, index: true },
+  session:   mongoose.Schema.Types.Mixed,
+  updatedAt: String
+});
+
+const SalonRatingSchema = new mongoose.Schema({
+  salonId:     { type: String, unique: true, index: true },
+  rating:      Number,
+  reviewCount: Number,
+  updatedAt:   String
+});
+
+const NotificationLogSchema = new mongoose.Schema({
+  data:    mongoose.Schema.Types.Mixed,
+  savedAt: String
+});
+
+// ─── MODELS ──────────────────────────────────────────────────
+let BookingModel, OnboardingModel, FlowSessionModel,
+    FeedbackModel, FeedbackSessionModel, SalonRatingModel, NotifLogModel;
+
+function initModels() {
+  BookingModel       = mongoose.models.Booking       || mongoose.model("Booking",       BookingSchema);
+  OnboardingModel    = mongoose.models.Onboarding    || mongoose.model("Onboarding",    OnboardingSchema);
+  FlowSessionModel   = mongoose.models.FlowSession   || mongoose.model("FlowSession",   FlowSessionSchema);
+  FeedbackModel      = mongoose.models.Feedback      || mongoose.model("Feedback",      FeedbackSchema);
+  FeedbackSessionModel = mongoose.models.FeedbackSession || mongoose.model("FeedbackSession", FeedbackSessionSchema);
+  SalonRatingModel   = mongoose.models.SalonRating   || mongoose.model("SalonRating",   SalonRatingSchema);
+  NotifLogModel      = mongoose.models.NotificationLog || mongoose.model("NotificationLog", NotificationLogSchema);
+}
+
+// ─── IN-MEMORY FALLBACK ──────────────────────────────────────
+const EMPTY_STATE = {
+  onboarding: {}, flowSessions: {}, bookings: [],
+  notificationLogs: [], feedbackSessions: {}, feedbacks: [], salonRatings: {}
+};
 let stateCache = structuredClone(EMPTY_STATE);
 
 function normalizePhone(value) {
@@ -8,53 +123,131 @@ function normalizePhone(value) {
   return digits;
 }
 
+// ─── INIT ────────────────────────────────────────────────────
 export async function initDatabase() {
   stateCache = structuredClone(EMPTY_STATE);
+  const connected = await connectMongo();
+  if (connected) {
+    initModels();
+    // Load ratings into memory cache from MongoDB
+    try {
+      const ratings = await SalonRatingModel.find({}).lean();
+      for (const r of ratings) {
+        stateCache.salonRatings[r.salonId] = {
+          rating: r.rating,
+          reviewCount: r.reviewCount,
+          updatedAt: r.updatedAt
+        };
+      }
+      console.log("[db] Loaded", ratings.length, "salon ratings from MongoDB");
+    } catch (e) {
+      console.warn("[db] Could not load ratings from MongoDB:", e.message);
+    }
+  }
   initDefaultRatings();
-  return "in-memory";
+  return connected ? "mongodb" : "in-memory";
 }
 
+// ─── ONBOARDING ──────────────────────────────────────────────
 export function getOnboardingState(phoneNumber) {
   const row = stateCache.onboarding[phoneNumber];
   return row && typeof row === "object" ? { ...row } : null;
 }
 
 export function setOnboardingState(phoneNumber, onboardingState) {
-  stateCache.onboarding[phoneNumber] = { ...onboardingState, updatedAt: new Date().toISOString() };
-  return { ...stateCache.onboarding[phoneNumber] };
+  const updated = { ...onboardingState, updatedAt: new Date().toISOString() };
+  stateCache.onboarding[phoneNumber] = updated;
+  if (isMongoConnected) {
+    OnboardingModel.findOneAndUpdate(
+      { phoneNumber },
+      { phoneNumber, state: updated, updatedAt: updated.updatedAt },
+      { upsert: true }
+    ).catch(e => console.warn("[db] onboarding save:", e.message));
+  }
+  return { ...updated };
 }
 
+// ─── FLOW SESSION ────────────────────────────────────────────
 export function getFlowSession(flowToken) {
   const row = stateCache.flowSessions[flowToken];
   return row && typeof row === "object" ? { ...row } : {};
 }
 
 export function setFlowSession(flowToken, session) {
-  stateCache.flowSessions[flowToken] = { ...session, updatedAt: new Date().toISOString() };
-  return { ...stateCache.flowSessions[flowToken] };
+  const updated = { ...session, updatedAt: new Date().toISOString() };
+  stateCache.flowSessions[flowToken] = updated;
+  if (isMongoConnected) {
+    FlowSessionModel.findOneAndUpdate(
+      { flowToken },
+      { flowToken, session: updated, updatedAt: updated.updatedAt },
+      { upsert: true }
+    ).catch(e => console.warn("[db] flowSession save:", e.message));
+  }
+  return { ...updated };
 }
 
+// ─── BOOKINGS ────────────────────────────────────────────────
 export async function insertBooking(booking) {
   const now = new Date().toISOString();
   const phone = normalizePhone(booking.mobile);
-  if (!phone) {
-    throw new Error("mobile is required to create booking");
-  }
-  const toSave = {
-    ...booking,
-    mobile: phone,
-    createdAt: booking.createdAt || now,
-    updatedAt: now
-  };
-  const idx = stateCache.bookings.findIndex((b) => b.bookingId === booking.bookingId);
+  if (!phone) throw new Error("mobile is required to create booking");
+
+  const toSave = { ...booking, mobile: phone, createdAt: booking.createdAt || now, updatedAt: now };
+
+  // In-memory
+  const idx = stateCache.bookings.findIndex(b => b.bookingId === booking.bookingId);
   if (idx >= 0) stateCache.bookings[idx] = toSave;
   else stateCache.bookings.unshift(toSave);
+
+  // MongoDB
+  if (isMongoConnected) {
+    try {
+      await BookingModel.findOneAndUpdate(
+        { bookingId: toSave.bookingId },
+        toSave,
+        { upsert: true, new: true }
+      );
+    } catch (e) {
+      console.warn("[db] booking save error:", e.message);
+    }
+  }
   return booking;
 }
 
+export async function listBookings() {
+  if (isMongoConnected) {
+    try {
+      const docs = await BookingModel.find({}).sort({ createdAt: -1 }).lean();
+      // Sync to memory
+      stateCache.bookings = docs;
+      return [...docs];
+    } catch (e) {
+      console.warn("[db] listBookings MongoDB error:", e.message);
+    }
+  }
+  return [...stateCache.bookings];
+}
+
+export async function listBookingsByMobile(mobile, limit = 10) {
+  const phone = normalizePhone(mobile);
+  if (!phone) return [];
+  const safeLimit = Math.max(1, Math.min(20, Number(limit) || 10));
+
+  if (isMongoConnected) {
+    try {
+      return await BookingModel.find({ mobile: phone })
+        .sort({ createdAt: -1 }).limit(safeLimit).lean();
+    } catch (e) {
+      console.warn("[db] listBookingsByMobile MongoDB error:", e.message);
+    }
+  }
+  return stateCache.bookings.filter(b => b.mobile === phone).slice(0, safeLimit);
+}
+
 export async function listUsers() {
+  const bookings = await listBookings();
   const byMobile = new Map();
-  for (const b of stateCache.bookings) {
+  for (const b of bookings) {
     if (!b.mobile || byMobile.has(b.mobile)) continue;
     byMobile.set(b.mobile, {
       userId: byMobile.size + 1,
@@ -69,7 +262,8 @@ export async function listUsers() {
 }
 
 export async function listAppointments() {
-  return stateCache.bookings.map((b, idx) => ({
+  const bookings = await listBookings();
+  return bookings.map((b, idx) => ({
     appointmentPk: idx + 1,
     appointmentId: b.bookingId,
     userId: idx + 1,
@@ -89,12 +283,14 @@ export async function listAppointments() {
   }));
 }
 
-export async function listBookings() {
-  return [...stateCache.bookings];
-}
-
+// ─── NOTIFICATION LOGS ───────────────────────────────────────
 export async function insertNotificationLog(log) {
-  stateCache.notificationLogs.unshift({ ...log, savedAt: new Date().toISOString() });
+  const entry = { ...log, savedAt: new Date().toISOString() };
+  stateCache.notificationLogs.unshift(entry);
+  if (isMongoConnected) {
+    NotifLogModel.create({ data: log, savedAt: entry.savedAt })
+      .catch(e => console.warn("[db] notifLog save:", e.message));
+  }
   return log;
 }
 
@@ -102,8 +298,16 @@ export async function listNotificationLogs(limit = 100) {
   return stateCache.notificationLogs.slice(0, Math.max(1, Math.min(500, Number(limit) || 100)));
 }
 
+// ─── FEEDBACK SESSION ────────────────────────────────────────
 export function setFeedbackSession(mobile, session) {
   stateCache.feedbackSessions[mobile] = { ...session, updatedAt: new Date().toISOString() };
+  if (isMongoConnected) {
+    FeedbackSessionModel.findOneAndUpdate(
+      { mobile },
+      { mobile, session: stateCache.feedbackSessions[mobile], updatedAt: new Date().toISOString() },
+      { upsert: true }
+    ).catch(e => console.warn("[db] feedbackSession save:", e.message));
+  }
 }
 
 export function getFeedbackSession(mobile) {
@@ -112,10 +316,20 @@ export function getFeedbackSession(mobile) {
 
 export function clearFeedbackSession(mobile) {
   delete stateCache.feedbackSessions[mobile];
+  if (isMongoConnected) {
+    FeedbackSessionModel.deleteOne({ mobile })
+      .catch(e => console.warn("[db] feedbackSession delete:", e.message));
+  }
 }
 
+// ─── FEEDBACK ────────────────────────────────────────────────
 export async function insertFeedback(feedback) {
-  stateCache.feedbacks.unshift({ ...feedback, savedAt: new Date().toISOString() });
+  const entry = { ...feedback, savedAt: new Date().toISOString() };
+  stateCache.feedbacks.unshift(entry);
+  if (isMongoConnected) {
+    FeedbackModel.create(entry)
+      .catch(e => console.warn("[db] feedback save:", e.message));
+  }
   return feedback;
 }
 
@@ -123,35 +337,119 @@ export async function listFeedbacks(limit = 100) {
   return stateCache.feedbacks.slice(0, Math.max(1, Math.min(500, Number(limit) || 100)));
 }
 
-export async function listBookingsByMobile(mobile, limit = 10) {
-  const phone = normalizePhone(mobile);
-  if (!phone) return [];
-  const safeLimit = Math.max(1, Math.min(20, Number(limit) || 10));
-  return stateCache.bookings.filter((b) => b.mobile === phone).slice(0, safeLimit);
-}
-
-// ─── SALON RATINGS ────────────────────────────────────────────
+// ─── SALON RATINGS ───────────────────────────────────────────
 export function setSalonRating(salonId, rating, reviewCount) {
-  stateCache.salonRatings[String(salonId)] = {
-    rating: Number(rating),
-    reviewCount: Number(reviewCount),
-    updatedAt: new Date().toISOString()
-  };
+  const entry = { rating: Number(rating), reviewCount: Number(reviewCount), updatedAt: new Date().toISOString() };
+  stateCache.salonRatings[String(salonId)] = entry;
+  if (isMongoConnected) {
+    SalonRatingModel.findOneAndUpdate(
+      { salonId: String(salonId) },
+      { salonId: String(salonId), ...entry },
+      { upsert: true }
+    ).catch(e => console.warn("[db] salonRating save:", e.message));
+  }
 }
 
 export function getSalonRating(salonId) {
   const r = stateCache.salonRatings[String(salonId)];
-  return {
-    rating: r?.rating ?? 4.8,
-    reviewCount: r?.reviewCount ?? 150
-  };
+  return { rating: r?.rating ?? 4.8, reviewCount: r?.reviewCount ?? 150 };
 }
 
 export function listSalonRatings() {
   return Object.entries(stateCache.salonRatings).map(([id, v]) => ({ salonId: id, ...v }));
 }
 
-// ─── DEFAULT RATINGS (855 salons, fixed seed) ─────────────────
+// ─── DAILY STATS ─────────────────────────────────────────────
+export function getDailyStats(dateStr) {
+  const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+  const today = dateStr || new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  const allBookings = stateCache.bookings;
+  const todayBookings = allBookings.filter(b => String(b.date || b.createdAt || "").startsWith(today));
+
+  const total     = todayBookings.length;
+  const completed = todayBookings.filter(b => b.status === "CONFIRMED").length;
+  const pending   = todayBookings.filter(b => !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING").length;
+  const cancelled = todayBookings.filter(b => b.status === "REJECTED" || b.status === "CANCELLED").length;
+  const noShow    = todayBookings.filter(b => b.status === "NO_SHOW").length;
+  const walkIn    = todayBookings.filter(b => b.isWalkIn === true).length;
+  const online    = total - walkIn;
+
+  // Service breakdown
+  const serviceMap = {};
+  for (const b of todayBookings) {
+    const services = String(b.serviceItem || b.serviceBlob || "General").split(/[;,]+/).map(s => s.trim()).filter(Boolean);
+    for (const svc of services) {
+      if (!serviceMap[svc]) serviceMap[svc] = { total: 0, completed: 0, pending: 0 };
+      serviceMap[svc].total++;
+      if (b.status === "CONFIRMED") serviceMap[svc].completed++;
+      else if (!b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING") serviceMap[svc].pending++;
+    }
+  }
+
+  // Staff breakdown
+  const staffMap = {};
+  for (const b of todayBookings) {
+    const stylist = String(b.stylistName || "Unassigned").trim();
+    if (!staffMap[stylist]) staffMap[stylist] = { served: 0, completed: 0 };
+    staffMap[stylist].served++;
+    if (b.status === "CONFIRMED") staffMap[stylist].completed++;
+  }
+
+  // Hourly distribution
+  const hourlyMap = {};
+  for (const b of todayBookings) {
+    let hour = null;
+    const slotMatch = String(b.timeSlot || "").match(/^(\d{1,2}):(\d{2})\s*([AP]M)/i);
+    if (slotMatch) {
+      let h = Number(slotMatch[1]);
+      const meridiem = slotMatch[3].toUpperCase();
+      if (meridiem === "PM" && h !== 12) h += 12;
+      if (meridiem === "AM" && h === 12) h = 0;
+      hour = h;
+    } else {
+      const ts = String(b.createdAt || "");
+      const hMatch = ts.match(/T(\d{2}):/);
+      if (hMatch) hour = (Number(hMatch[1]) + 5) % 24;
+    }
+    if (hour !== null) hourlyMap[hour] = (hourlyMap[hour] || 0) + 1;
+  }
+
+  // Peak hour
+  let peakHour = null, peakCount = 0;
+  for (const [h, cnt] of Object.entries(hourlyMap)) {
+    if (cnt > peakCount) { peakCount = cnt; peakHour = Number(h); }
+  }
+  function formatHour(h) {
+    if (h === null) return "—";
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:00 ${ampm}`;
+  }
+
+  // Salon breakdown top 5
+  const salonMap = {};
+  for (const b of todayBookings) {
+    const name = String(b.salonName || b.salonId || "Unknown");
+    salonMap[name] = (salonMap[name] || 0) + 1;
+  }
+  const topSalons = Object.entries(salonMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count }));
+
+  const completionRate = total > 0 ? ((completed / total) * 100).toFixed(1) : "0.0";
+  const pendingRate    = total > 0 ? ((pending   / total) * 100).toFixed(1) : "0.0";
+  const cancelledRate  = total > 0 ? ((cancelled / total) * 100).toFixed(1) : "0.0";
+  const noShowRate     = total > 0 ? ((noShow    / total) * 100).toFixed(1) : "0.0";
+
+  return {
+    date, total, completed, pending, cancelled, noShow, walkIn, online,
+    completionRate, pendingRate, cancelledRate, noShowRate,
+    peakHour: formatHour(peakHour), peakCount, hourlyMap,
+    serviceBreakdown: Object.entries(serviceMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
+    staffBreakdown:   Object.entries(staffMap).map(([name, v])   => ({ name, ...v })).sort((a, b) => b.served - a.served),
+    topSalons,
+    allTimeTotal: allBookings.length
+  };
+}
+
 const DEFAULT_SALON_RATINGS = {
   "1103": { rating: 4.8, reviewCount: 91 },
   "1150": { rating: 4.9, reviewCount: 147 },
@@ -1018,4 +1316,3 @@ function initDefaultRatings() {
       updatedAt: new Date().toISOString()
     };
   }
-}
