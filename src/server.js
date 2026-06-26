@@ -1,4 +1,5 @@
 
+📁 src/server.js (FULL FILE)
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -72,13 +73,12 @@ import feedbackRequestRouter from "./feedbackRequestApi.js";
 validateConfig();
 const dbPath = await initDatabase();
 
-// ─── START DAILY REPORT SCHEDULER ───────────────────────────
+// ─── START DAILY REPORT SCHEDULER (9 PM IST) ────────────────
 startDailyReportScheduler();
 
-// ─── ADMIN CONFIG ───────────────────────────────────────────
-const ADMIN_NUMBERS = new Set([
-  process.env.ADMIN_WHATSAPP || "917904307757",
-]);
+// ─── SINGLE ADMIN NUMBER ────────────────────────────────────
+const ADMIN_NUMBER = process.env.ADMIN_WHATSAPP || "917904307757";
+const ADMIN_NUMBERS = new Set([ADMIN_NUMBER]);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -98,7 +98,7 @@ app.get("/health", (_req, res) => {
 app.use(appointmentConfirmationRouter);
 app.use(feedbackRequestRouter);
 
-// ─── ADMIN REPORT ────────────────────────────────────────────
+// ─── ADMIN TEXT REPORT (manual `report` command) ────────────
 async function sendAdminReport(to) {
   try {
     const allBookings = await listBookings();
@@ -113,14 +113,14 @@ async function sendAdminReport(to) {
     const todayAll = todayBookings.length;
 
     const confirmed = allBookings.filter(b => b.status === "CONFIRMED").length;
-    const rejected  = allBookings.filter(b => b.status === "REJECTED").length;
-    const pending   = allBookings.filter(b =>
+    const rejected = allBookings.filter(b => b.status === "REJECTED").length;
+    const pending = allBookings.filter(b =>
       !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
     );
 
     const todayConfirmed = todayBookings.filter(b => b.status === "CONFIRMED").length;
-    const todayRejected  = todayBookings.filter(b => b.status === "REJECTED").length;
-    const todayPending   = todayBookings.filter(b =>
+    const todayRejected = todayBookings.filter(b => b.status === "REJECTED").length;
+    const todayPending = todayBookings.filter(b =>
       !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
     );
 
@@ -180,7 +180,7 @@ async function sendAdminReport(to) {
   }
 }
 
-// ─── ADMIN NOTIFICATION on new booking ───────────────────────
+// ─── ADMIN NOTIFICATION on new booking ──────────────────────
 async function notifyAdminNewBooking(booking) {
   try {
     const msg = `🔔 *New Booking — Naturals*\n\n` +
@@ -275,7 +275,6 @@ async function handleFlowCompletion(msg) {
     await insertBooking(fallbackBooking);
     logWebhook("db", `booking persisted from nfm_reply id=${fallbackBooking.bookingId}`);
 
-    // Notify admin about new booking
     await notifyAdminNewBooking(fallbackBooking);
 
     const addToCalendarPayload = {
@@ -677,7 +676,7 @@ async function handleInboundText(msg) {
     if (norm === "listratings") {
       const ratings = listSalonRatings();
       if (ratings.length === 0) {
-        await sendText(from, "No ratings set yet.\nUse: setrating <salonId> <rating> <reviews>\nExample: setrating 1158 4.7 230");
+        await sendText(from, "No ratings set yet.\nUse: setrating \nExample: setrating 1158 4.7 230");
       } else {
         const lines = ratings.map(r => "📍 " + r.salonId + ": ⭐ " + r.rating + " · " + r.reviewCount + " reviews").join("\n");
         await sendText(from, "*Salon Ratings:*\n\n" + lines);
@@ -685,16 +684,15 @@ async function handleInboundText(msg) {
       return;
     }
     if (norm === "help" || norm === "admin") {
-      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n📄 *sendreport* — Send today\'s PDF report now\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
+      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n📄 *sendreport* — Send today's PDF report now\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
       return;
     }
+    // ─── sendreport: PDF ONLY · NO TEXT ─────────────────────
     if (norm === "sendreport" || norm === "dailyreport" || norm === "send report") {
       try {
-        await sendText(from, "⏳ Generating PDF report... Please wait a moment.");
         await sendDailyReport();
       } catch (e) {
         logWebhookError("sendreport admin cmd", e);
-        await sendText(from, "❌ Report generation failed: " + e.message);
       }
       return;
     }
