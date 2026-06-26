@@ -1,7 +1,3 @@
-
-// src/dailyReportScheduler.js
-// Naturals Salon — Daily PDF Report (9 PM IST · Single Admin · PDF ONLY · No Text)
-
 import { getDailyStats } from "./database.js";
 import { buildDailyReportHtml } from "./reportGenerator.js";
 import { config } from "./config.js";
