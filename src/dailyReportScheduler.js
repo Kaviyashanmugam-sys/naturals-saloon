@@ -1,6 +1,4 @@
-Sari! 3 files-um thani thani-a clear-a kuduthuruken. Copy → Paste → Save pannunga. 🚀
 
-📁 FILE 1 of 3: src/dailyReportScheduler.js
 // src/dailyReportScheduler.js
 // Naturals Salon — Daily PDF Report (9 PM IST · Single Admin · PDF ONLY · No Text)
 
