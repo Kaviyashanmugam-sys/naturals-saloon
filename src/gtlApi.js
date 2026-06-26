@@ -48,9 +48,16 @@ function normalizeSalon(row) {
   const addressLine1 = String(addressText || [area, city, pincode].filter(Boolean).join(", ")).trim();
   const distanceKmRaw = Number(row?.DistanceKM ?? row?.distanceKm ?? row?.distance);
 
-  const latFin = Number.isFinite(lat) ? lat : null;
-  const lngFin = Number.isFinite(lng) ? lng : null;
-  const mapsUrl = String(row?.GoogleLocation ?? row?.mapsUrl ?? row?.MapURL ?? "").trim();
+  const latFin = Number.isFinite(lat) && lat !== 0 ? lat : null;
+  const lngFin = Number.isFinite(lng) && lng !== 0 ? lng : null;
+
+  // Build maps URL — prefer GoogleLocation from API, fallback to coordinates
+  const rawMapsUrl = String(row?.GoogleLocation ?? row?.mapsUrl ?? row?.MapURL ?? "").trim();
+  const mapsUrl = (rawMapsUrl && !rawMapsUrl.includes("null"))
+    ? rawMapsUrl
+    : (latFin != null && lngFin != null)
+      ? `https://maps.google.com/?q=${latFin},${lngFin}`
+      : "";
 
   // Rating & review count — use API values if present, else defaults
   const ratingRaw = Number(row?.Rating ?? row?.rating ?? row?.AvgRating ?? row?.avgRating ?? 0);
@@ -147,19 +154,77 @@ export async function fetchStoresByPincode(pincode) {
   return filtered;
 }
 
+// ─── FIXED: Proper city/area search that respects location ───
 export async function fetchStoresBySearchText(searchText) {
   const q = String(searchText || "").trim();
   const salons = await fetchAllStores();
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`\\b${escaped}\\b`, "i");
-  const filtered = salons.filter(
-    (s) =>
-      regex.test(s.city) ||
-      regex.test(s.area) ||
-      regex.test(s.name) ||
-      regex.test(s.addressLine1)
-  );
-  console.log("[gtlApi] normalized salons (searchtext) count=", filtered.length);
+
+  // Normalize search query for comparison
+  const qLower = q.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+
+  // City aliases — map common names to what appears in the data
+  const CITY_ALIASES = {
+    "bangalore": ["bangalore", "bengaluru", "bengalore"],
+    "bengaluru": ["bangalore", "bengaluru", "bengalore"],
+    "chennai": ["chennai", "madras"],
+    "mumbai": ["mumbai", "bombay"],
+    "delhi": ["delhi", "new delhi"],
+    "hyderabad": ["hyderabad", "secunderabad"],
+    "pune": ["pune", "poona"],
+    "kolkata": ["kolkata", "calcutta"],
+    "coimbatore": ["coimbatore", "kovai"],
+  };
+
+  // Get all aliases for the search query
+  const searchAliases = CITY_ALIASES[qLower] || [qLower];
+
+  // Escape for regex
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Score each salon — higher score = better match
+  const scored = salons.map((s) => {
+    const cityLower = (s.city || "").toLowerCase().replace(/[^a-z0-9\s]/g, "");
+    const areaLower = (s.area || "").toLowerCase().replace(/[^a-z0-9\s]/g, "");
+    const nameLower = (s.name || "").toLowerCase().replace(/[^a-z0-9\s]/g, "");
+    const addressLower = (s.addressLine1 || "").toLowerCase().replace(/[^a-z0-9\s]/g, "");
+
+    let score = 0;
+
+    for (const alias of searchAliases) {
+      const re = new RegExp(`\\b${escapeRegex(alias)}\\b`, "i");
+
+      // City match = highest priority (50 pts)
+      if (re.test(cityLower)) { score += 50; break; }
+
+      // Area match = high priority (30 pts)
+      if (re.test(areaLower)) { score += 30; break; }
+
+      // Name match (20 pts)
+      if (re.test(nameLower)) { score += 20; break; }
+
+      // Address match (10 pts)
+      if (re.test(addressLower)) { score += 10; break; }
+
+      // Partial word match as fallback (5 pts)
+      if (cityLower.includes(alias) || areaLower.includes(alias)) { score += 5; break; }
+    }
+
+    return { salon: s, score };
+  });
+
+  // Filter out 0 score, sort by score desc
+  const filtered = scored
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.salon);
+
+  console.log("[gtlApi] search='%s' aliases=%j matched=%d", q, searchAliases, filtered.length);
+
+  // Log first few results for debugging
+  if (filtered.length > 0) {
+    console.log("[gtlApi] top results:", filtered.slice(0, 3).map(s => `${s.name} (${s.city})`).join(", "));
+  }
+
   return filtered;
 }
 

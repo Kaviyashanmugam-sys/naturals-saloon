@@ -76,7 +76,6 @@ function rankByPincodeDistance(anchorPincode, list) {
 
 /**
  * 3–10 nearby salons (fewer only if your catalogue has fewer salons).
- * Pincode: no matches → []. GPS: all salons ranked by distance.
  */
 export function getNearestSalons({ pincode, searchText, lat, lng }) {
   return getNearestSalonsAsync({ pincode, searchText, lat, lng });
@@ -86,7 +85,7 @@ export async function getNearestSalonsAsync({ pincode, searchText, lat, lng }) {
   const searchStr = searchText != null ? String(searchText).trim() : "";
   const hasSearchText = searchStr !== "";
 
-  // 6-digit pincodes entered as text → route through pincode path for accurate geo-sorted results
+  // 6-digit pincodes entered as text → route through pincode path
   if (hasSearchText && /^\d{6}$/.test(searchStr)) {
     return getNearestSalonsAsync({ pincode: searchStr, lat, lng });
   }
@@ -101,6 +100,7 @@ export async function getNearestSalonsAsync({ pincode, searchText, lat, lng }) {
   }
   if (!salons.length) return [];
 
+  // For text search — return matched salons as-is (already sorted by relevance score)
   if (hasSearchText) {
     return withNearbyBounds(salons, salons);
   }
@@ -162,7 +162,6 @@ export async function getCategoryOptionsForGender(gender) {
 
 const BLOB_SEP = "###";
 
-/** Append one `categoryId||serviceTitle` pick to the running blob. */
 export function appendServiceBlob(blob, serviceOptionId) {
   const part = String(serviceOptionId || "").trim();
   if (!part) return blob || "";
@@ -176,7 +175,6 @@ export function parseServiceBlobParts(blob) {
   return raw.split(BLOB_SEP).filter(Boolean);
 }
 
-/** Human-readable list for UI / review. */
 export function formatServicesPrettyFromBlob(blob) {
   const parts = parseServiceBlobParts(blob);
   if (parts.length === 0) return "";
@@ -212,7 +210,8 @@ export function getSalonByIdFromCache(salonId) {
   return getSalonFromCache(salonId) || null;
 }
 
-/** WhatsApp list row: title max 24, description max 72 characters. */
+// ─── WhatsApp list row: title max 24, description max 72 chars ───
+
 export function truncateSalonListTitle(name, max = 24) {
   const n = String(name || "");
   if (n.length <= max) return n;
@@ -220,12 +219,35 @@ export function truncateSalonListTitle(name, max = 24) {
   return `${n.slice(0, max - 3)}...`;
 }
 
+// ─── UPDATED: description now shows rating + reviews like Google Maps ───
 export function formatSalonListDescription(s) {
+  const parts = [];
+
+  // Rating stars + review count (like: ⭐ 4.9 · 170 Reviews)
+  if (s.rating && s.rating > 0) {
+    const stars = "⭐";
+    const reviewText = s.reviewCount > 0 ? ` · ${s.reviewCount} Reviews` : "";
+    parts.push(`${stars} ${s.rating}${reviewText}`);
+  }
+
+  // Address or area + city
   const address = String(s.addressLine1 || "").trim();
-  const fallback = [s.city, s.pincode].filter(Boolean).join(" | ");
-  const line = address || fallback;
-  if (line.length > 72) return `${line.slice(0, 69)}...`;
-  return line;
+  const fallback = [s.area, s.city].filter(Boolean).join(", ");
+  const locationLine = address || fallback;
+
+  if (locationLine) {
+    // Remaining space after rating line
+    const ratingLine = parts[0] || "";
+    const maxAddress = 72 - (ratingLine ? ratingLine.length + 1 : 0);
+    const trimmed = locationLine.length > maxAddress
+      ? `${locationLine.slice(0, maxAddress - 3)}...`
+      : locationLine;
+    parts.push(trimmed);
+  }
+
+  // Combine with newline — WhatsApp list descriptions support \n
+  const combined = parts.join("\n");
+  return combined.slice(0, 72);
 }
 
 export function getSalonListTitle(s) {
@@ -277,7 +299,6 @@ function parseOpenHoursRange(openHours) {
 export function getAvailableSlotsByOpenHours({ date, openHours, stepMinutes = 30 }) {
   const parsed = parseOpenHoursRange(openHours);
   if (!parsed) {
-    // Fallback if open hours are unavailable.
     return ["10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM"];
   }
 
@@ -291,7 +312,6 @@ export function getAvailableSlotsByOpenHours({ date, openHours, stepMinutes = 30
     all.push(minutesToTimeString(cur));
   }
 
-  // Keep deterministic thinning to simulate unavailable slots while preserving 30-min cadence.
   const skipIndex = (String(date || "").length + start + end) % 4;
   return all.filter((_, idx) => idx % 4 !== skipIndex);
 }

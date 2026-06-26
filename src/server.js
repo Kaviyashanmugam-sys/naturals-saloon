@@ -74,9 +74,14 @@ const dbPath = await initDatabase();
 // ─── START DAILY REPORT SCHEDULER (9 PM IST) ────────────────
 startDailyReportScheduler();
 
-// ─── SINGLE ADMIN NUMBER ────────────────────────────────────
-const ADMIN_NUMBER = process.env.ADMIN_WHATSAPP || "917904307757";
-const ADMIN_NUMBERS = new Set([ADMIN_NUMBER]);
+// ─── ADMIN NUMBERS ───────────────────────────────────────────
+// To add/change admin numbers, update ADMIN_WHATSAPP in Render env vars
+// Multiple admins: set ADMIN_WHATSAPP=917904307757,919876543210
+const rawAdminEnv = process.env.ADMIN_WHATSAPP || "917904307757";
+const ADMIN_NUMBERS = new Set(
+  rawAdminEnv.split(",").map(n => n.trim()).filter(Boolean)
+);
+const PRIMARY_ADMIN = [...ADMIN_NUMBERS][0];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -96,88 +101,6 @@ app.get("/health", (_req, res) => {
 app.use(appointmentConfirmationRouter);
 app.use(feedbackRequestRouter);
 
-// ─── ADMIN TEXT REPORT (manual `report` command) ────────────
-async function sendAdminReport(to) {
-  try {
-    const allBookings = await listBookings();
-    const today = new Date().toISOString().slice(0, 10);
-
-    const todayBookings = allBookings.filter(b => {
-      const d = b.date || b.createdAt || "";
-      return d.startsWith(today);
-    });
-
-    const all = allBookings.length;
-    const todayAll = todayBookings.length;
-
-    const confirmed = allBookings.filter(b => b.status === "CONFIRMED").length;
-    const rejected = allBookings.filter(b => b.status === "REJECTED").length;
-    const pending = allBookings.filter(b =>
-      !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
-    );
-
-    const todayConfirmed = todayBookings.filter(b => b.status === "CONFIRMED").length;
-    const todayRejected = todayBookings.filter(b => b.status === "REJECTED").length;
-    const todayPending = todayBookings.filter(b =>
-      !b.status || b.status === "PENDING_APPROVAL" || b.status === "PENDING"
-    );
-
-    const formatDate = (d) => {
-      if (!d) return "—";
-      return d.slice(0, 10);
-    };
-
-    let msg = `📊 *Naturals Booking Report*\n`;
-    msg += `🗓️ ${today}\n`;
-    msg += `━━━━━━━━━━━━━━━━━━\n\n`;
-
-    msg += `*📅 Today (${today})*\n`;
-    msg += `✅ Confirmed: ${todayConfirmed}\n`;
-    msg += `⏳ Pending: ${todayPending.length}\n`;
-    msg += `❌ Rejected: ${todayRejected}\n`;
-    msg += `📋 Total Today: ${todayAll}\n\n`;
-
-    msg += `*📈 All Time*\n`;
-    msg += `✅ Confirmed: ${confirmed}\n`;
-    msg += `⏳ Pending: ${pending.length}\n`;
-    msg += `❌ Rejected: ${rejected}\n`;
-    msg += `📋 Total: ${all}\n`;
-
-    if (todayPending.length > 0) {
-      msg += `\n━━━━━━━━━━━━━━━━━━\n`;
-      msg += `*⏳ Today's Pending Bookings:*\n`;
-      todayPending.slice(0, 10).forEach((b, i) => {
-        msg += `\n${i + 1}. *${b.fullName || "—"}*\n`;
-        msg += `   📍 ${b.salonName || "—"}\n`;
-        msg += `   💇 ${b.serviceItem || "—"}\n`;
-        msg += `   📅 ${formatDate(b.date)} ${b.timeSlot || ""}\n`;
-        msg += `   🆔 ${b.bookingId || "—"}\n`;
-      });
-    }
-
-    if (pending.length > 0 && todayPending.length === 0) {
-      msg += `\n━━━━━━━━━━━━━━━━━━\n`;
-      msg += `*⏳ All Pending Bookings:*\n`;
-      pending.slice(0, 10).forEach((b, i) => {
-        msg += `\n${i + 1}. *${b.fullName || "—"}*\n`;
-        msg += `   📍 ${b.salonName || "—"}\n`;
-        msg += `   💇 ${b.serviceItem || "—"}\n`;
-        msg += `   📅 ${formatDate(b.date)} ${b.timeSlot || ""}\n`;
-        msg += `   🆔 ${b.bookingId || "—"}\n`;
-      });
-    }
-
-    msg += `\n━━━━━━━━━━━━━━━━━━\n`;
-    msg += `_Reply *report* anytime for latest summary_`;
-
-    await sendText(to, msg);
-    logWebhook("admin_report", `sent to ${to}`);
-  } catch (e) {
-    logWebhookError("sendAdminReport", e);
-    await sendText(to, "❌ Report generate பண்ண error வந்துச்சு. Try again!");
-  }
-}
-
 // ─── ADMIN NOTIFICATION on new booking ──────────────────────
 async function notifyAdminNewBooking(booking) {
   try {
@@ -190,7 +113,7 @@ async function notifyAdminNewBooking(booking) {
       `⏰ *Time:* ${booking.timeSlot || "—"}\n` +
       `👩‍🔧 *Stylist:* ${booking.stylistName || "—"}\n` +
       `🆔 *Booking ID:* ${booking.bookingId || "—"}\n\n` +
-      `_Reply *report* to see all bookings_`;
+      `_Reply *sendreport* to get today's PDF report_`;
     for (const adminNum of ADMIN_NUMBERS) {
       await sendText(adminNum, msg);
     }
@@ -260,7 +183,7 @@ async function handleFlowCompletion(msg) {
       email: payload.customer_email || "",
       salonId: payload.salon_id || "",
       salonName: payload.salon_name || "",
-      mapsUrl: payload.maps_url || "",
+      mapsUrl: resolveMapsUrl(payload),
       gender: payload.gender || "",
       serviceCategory: payload.service_category || "Multiple",
       serviceItem: servicePretty,
@@ -332,6 +255,18 @@ async function handleFlowCompletion(msg) {
       logWebhookError("send location pin", e);
     }
   }
+}
+
+// ─── Resolve a valid maps URL from payload ───────────────────
+function resolveMapsUrl(payload) {
+  const raw = String(payload.maps_url || "").trim();
+  if (raw && !raw.includes("null")) return raw;
+  const lat = payload.salon_latitude;
+  const lng = payload.salon_longitude;
+  if (lat && lng && !String(lat).includes("null") && !String(lng).includes("null")) {
+    return `https://maps.google.com/?q=${lat},${lng}`;
+  }
+  return "";
 }
 
 function normalizeTimeForApi(value) {
@@ -437,7 +372,7 @@ async function getKnownCustomerName(from) {
 
 async function presentNearbySalonsOrRetry(from, nearbySalons) {
   if (!nearbySalons || nearbySalons.length === 0) {
-    await sendPromptWithBackButton(from, "🔍 No Naturals salons found for that location.\n\nPlease type a correct *city, area name or pincode* (example: Chennai / T Nagar / 600017).\n\nOr tap below to choose a different location method.");
+    await sendPromptWithBackButton(from, "🔍 No Naturals salons found for that location.\n\nPlease type a correct *city, area name or pincode* (example: Bangalore / Koramangala / 560034).\n\nOr tap below to choose a different location method.");
     setOnboarding(from, { phase: PHASE.AWAITING_PIN_OR_LOCATION, location_input_mode: "city" });
     return;
   }
@@ -504,6 +439,13 @@ async function sendBookingFlowAfterSalonSelection(from, salon) {
   ];
   logWebhook("stylist_options", `count=${stylistOptions.length} first=${JSON.stringify(stylistOptions[0])}`);
 
+  // Build a proper maps URL
+  const mapsUrl = (salon.mapsUrl && !salon.mapsUrl.includes("null"))
+    ? salon.mapsUrl
+    : (salon.lat != null && salon.lng != null)
+      ? `https://maps.google.com/?q=${salon.lat},${salon.lng}`
+      : "";
+
   const initialFlowData = {
     customer_name: customerName,
     customer_mobile: customerMobile,
@@ -511,9 +453,9 @@ async function sendBookingFlowAfterSalonSelection(from, salon) {
     salon_name: salon.name,
     salon_address_line: addressLine,
     salon_phone: salon.phone || "",
-    maps_url: salon.mapsUrl,
-    salon_latitude: String(salon.lat),
-    salon_longitude: String(salon.lng),
+    maps_url: mapsUrl,
+    salon_latitude: String(salon.lat ?? ""),
+    salon_longitude: String(salon.lng ?? ""),
     stylist_options: stylistOptions
   };
 
@@ -560,7 +502,7 @@ async function handleSalonListReply(msg) {
     }
 
     if (selectionId === "loc_mode_pincode" || selectionId === "loc_mode_city") {
-      await sendPromptWithBackButton(from, "📍 Please type your *city, area name or pincode* (example: Chennai / T Nagar / 600017).\n\nOr tap below to choose a different location method.");
+      await sendPromptWithBackButton(from, "📍 Please type your *city, area name or pincode* (example: Bangalore / Koramangala / 560034).\n\nOr tap below to choose a different location method.");
       setOnboarding(from, { phase: PHASE.AWAITING_PIN_OR_LOCATION, location_input_mode: "city" });
       return;
     }
@@ -660,10 +602,8 @@ async function handleInboundText(msg) {
 
   // ─── ADMIN COMMANDS ──────────────────────────────────────
   if (ADMIN_NUMBERS.has(from)) {
-    if (norm === "report" || norm.startsWith("report")) {
-      await sendAdminReport(from);
-      return;
-    }
+
+    // ─── setrating command ───────────────────────────────
     const ratingMatch = norm.match(/^setrating\s+(\d+)\s+([\d.]+)\s+(\d+)/);
     if (ratingMatch) {
       const [, salonId, rating, reviewCount] = ratingMatch;
@@ -671,6 +611,7 @@ async function handleInboundText(msg) {
       await sendText(from, "✅ Rating updated!\nSalon ID: " + salonId + "\n⭐ " + rating + " · " + reviewCount + " Reviews");
       return;
     }
+
     if (norm === "listratings") {
       const ratings = listSalonRatings();
       if (ratings.length === 0) {
@@ -681,16 +622,26 @@ async function handleInboundText(msg) {
       }
       return;
     }
+
     if (norm === "help" || norm === "admin") {
-      await sendText(from, "*Admin Commands:*\n\n📊 *report* — Booking summary\n📄 *sendreport* — Send today's PDF report now\n⭐ *setrating 1158 4.7 230* — Set salon rating\n📋 *listratings* — Show all ratings\n\nSalon IDs: Check booking reports");
+      await sendText(from,
+        `*Admin Commands:*\n\n` +
+        `📄 *sendreport* — Send today's PDF report now\n` +
+        `⭐ *setrating 1158 4.7 230* — Set salon rating\n` +
+        `📋 *listratings* — Show all ratings\n\n` +
+        `_To change admin number: update ADMIN_WHATSAPP in Render Environment_`
+      );
       return;
     }
-    // ─── sendreport: PDF ONLY · NO TEXT ─────────────────────
-    if (norm === "sendreport" || norm === "dailyreport" || norm === "send report") {
+
+    // ─── sendreport: PDF ONLY ─────────────────────────────
+    if (norm === "sendreport" || norm === "dailyreport" || norm === "send report" || norm === "report") {
       try {
         await sendDailyReport();
+        await sendText(from, "✅ PDF report sent!");
       } catch (e) {
         logWebhookError("sendreport admin cmd", e);
+        await sendText(from, `❌ Report failed: ${e.message}\n\nCheck PDFSHIFT_API_KEY in Render env vars.`);
       }
       return;
     }
@@ -745,7 +696,7 @@ async function handleInboundText(msg) {
       await presentNearbySalonsOrRetry(from, nearby);
       return;
     }
-    await sendText(from, "👆 Tap *Choose salon* in the menu above and pick a row — or send a new *6-digit pincode* to refresh the list.");
+    await sendText(from, "👆 Tap *Choose salon* in the menu above and pick a row — or send a new *city / area / pincode* to refresh the list.");
     return;
   }
 
@@ -753,14 +704,14 @@ async function handleInboundText(msg) {
     const locationMode = String(getOnboarding(from).location_input_mode || "");
     if (locationMode === "pincode") {
       if (!/^\d{6}$/.test(text.trim())) {
-        await sendPromptWithBackButton(from, "📌 Please enter a valid *6-digit pincode* (example: 600017).\n\nOr tap below to choose a different location method.");
+        await sendPromptWithBackButton(from, "📌 Please enter a valid *6-digit pincode* (example: 560034).\n\nOr tap below to choose a different location method.");
         return;
       }
     }
     if (locationMode === "city") {
       const cityText = text.trim();
       if (!cityText) {
-        await sendPromptWithBackButton(from, "🏙️ Please enter a *city/area name* (example: Chennai / Anna Nagar).\n\nOr tap below to choose a different location method.");
+        await sendPromptWithBackButton(from, "🏙️ Please enter a *city/area name* (example: Bangalore / Koramangala).\n\nOr tap below to choose a different location method.");
         return;
       }
     }
@@ -772,7 +723,7 @@ async function handleInboundText(msg) {
       await presentNearbySalonsOrRetry(from, nearby);
       return;
     }
-    await sendPromptWithBackButton(from, "📌 Please send a valid *pincode* or *city name* (example: 600017 / Chennai).\n\nOr tap below to choose a different location method.");
+    await sendPromptWithBackButton(from, "📌 Please send a valid *pincode* or *city name* (example: 560034 / Bangalore).\n\nOr tap below to choose a different location method.");
     return;
   }
 
@@ -1026,5 +977,5 @@ app.post("/api/booking-status", async (req, res) => {
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Naturals WhatsApp bot listening on http://0.0.0.0:${config.port}`);
   console.log(`Database: ${dbPath}`);
-  console.log(`Admin WhatsApp: ${[...ADMIN_NUMBERS].join(", ")}`);
+  console.log(`Admin Numbers: ${[...ADMIN_NUMBERS].join(", ")}`);
 });
