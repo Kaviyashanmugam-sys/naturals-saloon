@@ -101,28 +101,6 @@ app.get("/health", (_req, res) => {
 app.use(appointmentConfirmationRouter);
 app.use(feedbackRequestRouter);
 
-// ─── ADMIN NOTIFICATION on new booking ──────────────────────
-async function notifyAdminNewBooking(booking) {
-  try {
-    const msg = `🔔 *New Booking — Naturals*\n\n` +
-      `👤 *Customer:* ${booking.fullName || "—"}\n` +
-      `📱 *Mobile:* ${booking.mobile || "—"}\n` +
-      `📍 *Salon:* ${booking.salonName || "—"}\n` +
-      `💇 *Service:* ${booking.serviceItem || "—"}\n` +
-      `📅 *Date:* ${booking.date || "—"}\n` +
-      `⏰ *Time:* ${booking.timeSlot || "—"}\n` +
-      `👩‍🔧 *Stylist:* ${booking.stylistName || "—"}\n` +
-      `🆔 *Booking ID:* ${booking.bookingId || "—"}\n\n` +
-      `_Reply *sendreport* to get today's PDF report_`;
-    for (const adminNum of ADMIN_NUMBERS) {
-      await sendText(adminNum, msg);
-    }
-    logWebhook("admin_notify", `new booking ${booking.bookingId}`);
-  } catch (e) {
-    logWebhookError("notifyAdminNewBooking", e);
-  }
-}
-
 /** Flow submit completion */
 async function handleFlowCompletion(msg) {
   const from = msg.from;
@@ -195,8 +173,6 @@ async function handleFlowCompletion(msg) {
 
     await insertBooking(fallbackBooking);
     logWebhook("db", `booking persisted from nfm_reply id=${fallbackBooking.bookingId}`);
-
-    await notifyAdminNewBooking(fallbackBooking);
 
     const addToCalendarPayload = {
       storeid: Number(payload.salon_id || 0),
