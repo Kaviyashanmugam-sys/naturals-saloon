@@ -45,8 +45,12 @@ async function sendWhatsAppDocument(to, mediaId, filename) {
 
 // ─── PDF Generation via PDFShift ────────────────────────────
 async function generatePdfFromHtml(html) {
+  // Read from environment variable directly
   const apiKey = process.env.PDFSHIFT_API_KEY;
-  if (!apiKey) throw new Error("PDFSHIFT_API_KEY not set");
+
+  if (!apiKey) {
+    throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
+  }
 
   const credentials = Buffer.from(`api:${apiKey}`).toString("base64");
 
@@ -72,20 +76,23 @@ async function generatePdfFromHtml(html) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ─── Core Report Sender — PDF ONLY (NO TEXT) ────────────────
+// ─── Core Report Sender — PDF ONLY ──────────────────────────
 export async function sendDailyReport(dateStr) {
   const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
   const today = dateStr || new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
 
   logWebhook("daily_report", `building PDF report for ${today}`);
 
-  if (!process.env.PDFSHIFT_API_KEY) {
+  const apiKey = process.env.PDFSHIFT_API_KEY;
+  if (!apiKey) {
     throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
   }
 
-  const stats = getDailyStats(today);
-  const filename = `naturals-report-${today}.pdf`;
+  // ✅ getDailyStats is now async — must await
+  const stats = await getDailyStats(today);
+  logWebhook("daily_report", `stats fetched: total=${stats.total} date=${stats.date}`);
 
+  const filename = `naturals-report-${today}.pdf`;
   const html = buildDailyReportHtml(stats);
   const pdfBuffer = await generatePdfFromHtml(html);
   logWebhook("daily_report", `PDF generated: ${pdfBuffer.length} bytes`);
@@ -135,6 +142,7 @@ function scheduleWithTimeout() {
     if (target <= istNow) target.setDate(target.getDate() + 1);
     return target.getTime() - istNow.getTime();
   }
+
   function scheduleNext() {
     const ms = msUntilNext9PMIST();
     console.log(`[scheduler] Next report in ${(ms / 3600000).toFixed(1)}h`);
