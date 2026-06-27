@@ -27,7 +27,7 @@ function getPdfShiftKey() {
       }
     } catch {}
   }
-  if (process.env.pdfshift_api_key) return process.env.pdfshift_api_key;
+  if (process.env.PDFSHIFT_API_KEY) return process.env.PDFSHIFT_API_KEY;
   console.error("[pdfshift] key NOT FOUND anywhere!");
   return null;
 }
