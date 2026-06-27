@@ -1,19 +1,44 @@
+
 import { getDailyStats } from "./database.js";
 import { buildDailyReportHtml } from "./reportGenerator.js";
 import { config } from "./config.js";
 import { logWebhook, logWebhookError } from "./webhookLog.js";
+import { readFileSync } from "fs";
 
-// ─── SINGLE ADMIN NUMBER ────────────────────────────────────
+// ─── ADMIN NUMBER ────────────────────────────────────────────
 const ADMIN_NUMBER = process.env.ADMIN_WHATSAPP || "917904307757";
 
-// ─── WhatsApp Media Helpers ─────────────────────────────────
+// ─── Get PDFShift key — env var OR secret file ───────────────
+function getPdfShiftKey() {
+  if (process.env.PDFSHIFT_API_KEY) {
+    console.log("[pdfshift] key from env var OK");
+    return process.env.PDFSHIFT_API_KEY;
+  }
+  const secretPaths = [
+    "/etc/secrets/PDFSHIFT_API_KEY",
+    "/etc/secrets/PDFSHIFT_API_KEY.txt",
+  ];
+  for (const p of secretPaths) {
+    try {
+      const val = readFileSync(p, "utf8").trim();
+      if (val) {
+        console.log("[pdfshift] key from secret file:", p);
+        return val;
+      }
+    } catch {}
+  }
+  if (process.env.pdfshift_api_key) return process.env.pdfshift_api_key;
+  console.error("[pdfshift] key NOT FOUND anywhere!");
+  return null;
+}
+
+// ─── WhatsApp Media Helpers ──────────────────────────────────
 async function uploadMediaBuffer(buffer, filename, mimeType) {
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/media`;
   const form = new globalThis.FormData();
   form.append("messaging_product", "whatsapp");
   form.append("file", new globalThis.Blob([buffer], { type: mimeType }), filename);
   form.append("type", mimeType);
-
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.whatsappToken}` },
@@ -43,17 +68,12 @@ async function sendWhatsAppDocument(to, mediaId, filename) {
   return res.json();
 }
 
-// ─── PDF Generation via PDFShift ────────────────────────────
+// ─── PDF Generation via PDFShift ─────────────────────────────
 async function generatePdfFromHtml(html) {
-  // Read from environment variable directly
-  const apiKey = process.env.PDFSHIFT_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
-  }
+  const apiKey = getPdfShiftKey();
+  if (!apiKey) throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
 
   const credentials = Buffer.from(`api:${apiKey}`).toString("base64");
-
   const res = await fetch("https://api.pdfshift.io/v3/convert/pdf", {
     method: "POST",
     headers: {
@@ -68,7 +88,6 @@ async function generatePdfFromHtml(html) {
       margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" }
     })
   });
-
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`PDFShift failed (${res.status}): ${err.slice(0, 300)}`);
@@ -76,21 +95,17 @@ async function generatePdfFromHtml(html) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ─── Core Report Sender — PDF ONLY ──────────────────────────
+// ─── Core Report Sender ───────────────────────────────────────
 export async function sendDailyReport(dateStr) {
   const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
   const today = dateStr || new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
-
   logWebhook("daily_report", `building PDF report for ${today}`);
 
-  const apiKey = process.env.PDFSHIFT_API_KEY;
-  if (!apiKey) {
-    throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
-  }
+  const apiKey = getPdfShiftKey();
+  if (!apiKey) throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
 
-  // ✅ getDailyStats is now async — must await
   const stats = await getDailyStats(today);
-  logWebhook("daily_report", `stats fetched: total=${stats.total} date=${stats.date}`);
+  logWebhook("daily_report", `stats: total=${stats.total} date=${stats.date}`);
 
   const filename = `naturals-report-${today}.pdf`;
   const html = buildDailyReportHtml(stats);
@@ -106,7 +121,7 @@ export async function sendDailyReport(dateStr) {
   return stats;
 }
 
-// ─── Scheduler (9 PM IST = 15:30 UTC) ───────────────────────
+// ─── Scheduler (9 PM IST = 15:30 UTC) ────────────────────────
 export function startDailyReportScheduler() {
   tryStartWithCron();
 }
@@ -115,7 +130,6 @@ async function tryStartWithCron() {
   try {
     const cron = await import("node-cron");
     const schedule = process.env.REPORT_CRON || "30 15 * * *";
-
     cron.default.schedule(schedule, async () => {
       console.log("[scheduler] Daily report triggered at", new Date().toISOString());
       try {
@@ -125,10 +139,9 @@ async function tryStartWithCron() {
         logWebhookError("scheduler daily_report", err);
       }
     }, { timezone: "UTC" });
-
     console.log(`[scheduler] Daily report scheduled: ${schedule} UTC (9 PM IST)`);
   } catch (cronErr) {
-    console.warn("[scheduler] node-cron unavailable, using setTimeout:", cronErr.message);
+    console.warn("[scheduler] node-cron unavailable:", cronErr.message);
     scheduleWithTimeout();
   }
 }
@@ -142,7 +155,6 @@ function scheduleWithTimeout() {
     if (target <= istNow) target.setDate(target.getDate() + 1);
     return target.getTime() - istNow.getTime();
   }
-
   function scheduleNext() {
     const ms = msUntilNext9PMIST();
     console.log(`[scheduler] Next report in ${(ms / 3600000).toFixed(1)}h`);
