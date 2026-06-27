@@ -681,11 +681,13 @@ async function handleInboundText(msg) {
     // ─── sendreport: PDF ONLY ─────────────────────────────
     if (norm === "sendreport" || norm === "dailyreport" || norm === "send report" || norm === "report") {
       try {
+        console.log("[sendreport] triggered by", from, "key_present=", !!process.env.PDFSHIFT_API_KEY, "key_length=", process.env.PDFSHIFT_API_KEY?.length || 0);
         await sendDailyReport();
         await sendText(from, "✅ PDF report sent!");
       } catch (e) {
+        console.error("[sendreport] FULL ERROR:", e.message, e.stack);
         logWebhookError("sendreport admin cmd", e);
-        await sendText(from, `❌ Report failed: ${e.message}\n\nCheck PDFSHIFT_API_KEY in Render env vars.`);
+        await sendText(from, `❌ Report failed: ${e.message}`);
       }
       return;
     }
