@@ -167,6 +167,32 @@ app.get("/internal/debug-report", async (_req, res) => {
   }
 });
 
+// ─── TEMP DEBUG: direct MongoDB count, bypassing any caching layer ──
+app.get("/internal/debug-mongo", async (_req, res) => {
+  try {
+    const mongoose = (await import("mongoose")).default;
+    const isConnected = mongoose.connection.readyState === 1;
+    let count = -1;
+    let docs = [];
+    if (isConnected) {
+      const Booking = mongoose.models.Booking;
+      if (Booking) {
+        count = await Booking.countDocuments({});
+        docs = await Booking.find({}).sort({ createdAt: -1 }).limit(5).lean();
+      }
+    }
+    res.json({
+      mongoConnected: isConnected,
+      readyState: mongoose.connection.readyState,
+      dbName: mongoose.connection.name,
+      bookingCount: count,
+      recentBookings: docs
+    });
+  } catch (e) {
+    res.json({ error: e.message, stack: e.stack });
+  }
+});
+
 app.use(appointmentConfirmationRouter);
 app.use(feedbackRequestRouter);
 
@@ -240,7 +266,9 @@ async function handleFlowCompletion(msg) {
       timeSlot: payload.slot_id || ""
     });
 
+    console.log("[DEBUG-BOOKING] about to insert:", JSON.stringify(fallbackBooking));
     await insertBooking(fallbackBooking);
+    console.log("[DEBUG-BOOKING] insertBooking() returned successfully, bookingId=", fallbackBooking.bookingId);
     logWebhook("db", `booking persisted from nfm_reply id=${fallbackBooking.bookingId}`);
 
     const addToCalendarPayload = {
@@ -261,6 +289,7 @@ async function handleFlowCompletion(msg) {
     logWebhook("api", `addToCalendar success ${JSON.stringify(addToCalendarResp)}`);
     addToCalendarSucceeded = true;
   } catch (persistErr) {
+    console.error("[DEBUG-BOOKING] FAILED:", persistErr.message, persistErr.stack);
     logWebhookError("persist booking from nfm_reply", persistErr);
   }
 
