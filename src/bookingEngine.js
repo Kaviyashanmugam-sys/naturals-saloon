@@ -6,6 +6,7 @@ import {
   fetchStylists,
   getSalonFromCache
 } from "./gtlApi.js";
+import { getSalonRating } from "./database.js";
 
 function toRadians(value) {
   return (value * Math.PI) / 180;
@@ -55,7 +56,6 @@ function withNearbyBounds(primary, fallbackPool) {
   if (uniquePrimary.length >= NEARBY_MIN) {
     return uniquePrimary.slice(0, Math.min(NEARBY_MAX, uniquePrimary.length));
   }
-
   const extras = uniqueBySalonId(
     (fallbackPool || []).filter((s) => !uniquePrimary.some((p) => p.id === s.id))
   );
@@ -74,9 +74,6 @@ function rankByPincodeDistance(anchorPincode, list) {
     .sort((a, b) => a.pinDistance - b.pinDistance);
 }
 
-/**
- * 3–10 nearby salons (fewer only if your catalogue has fewer salons).
- */
 export function getNearestSalons({ pincode, searchText, lat, lng }) {
   return getNearestSalonsAsync({ pincode, searchText, lat, lng });
 }
@@ -85,7 +82,6 @@ export async function getNearestSalonsAsync({ pincode, searchText, lat, lng }) {
   const searchStr = searchText != null ? String(searchText).trim() : "";
   const hasSearchText = searchStr !== "";
 
-  // 6-digit pincodes entered as text → route through pincode path
   if (hasSearchText && /^\d{6}$/.test(searchStr)) {
     return getNearestSalonsAsync({ pincode: searchStr, lat, lng });
   }
@@ -100,7 +96,6 @@ export async function getNearestSalonsAsync({ pincode, searchText, lat, lng }) {
   }
   if (!salons.length) return [];
 
-  // For text search — return matched salons as-is (already sorted by relevance score)
   if (hasSearchText) {
     return withNearbyBounds(salons, salons);
   }
@@ -111,34 +106,20 @@ export async function getNearestSalonsAsync({ pincode, searchText, lat, lng }) {
     if (direct.length === 0) return [];
     const anchor = direct.find((s) => s.lat != null && s.lng != null) || direct[0];
     if (anchor.lat == null || anchor.lng == null) {
-      const cityPool = rankByPincodeDistance(
-        p,
-        salons.filter(
-          (s) => s.city && anchor.city && s.city.toLowerCase() === anchor.city.toLowerCase()
-        )
+      const cityPool = rankByPincodeDistance(p,
+        salons.filter((s) => s.city && anchor.city && s.city.toLowerCase() === anchor.city.toLowerCase())
       );
-      return withNearbyBounds(
-        rankByPincodeDistance(p, direct),
-        cityPool
-      );
+      return withNearbyBounds(rankByPincodeDistance(p, direct), cityPool);
     }
     const withCoords = salons.filter((s) => s.lat != null && s.lng != null);
     const ranked = sortByDistanceFrom(anchor.lat, anchor.lng, withCoords);
-    const cityPool = rankByPincodeDistance(
-      p,
-      salons.filter(
-        (s) => s.city && anchor.city && s.city.toLowerCase() === anchor.city.toLowerCase()
-      )
+    const cityPool = rankByPincodeDistance(p,
+      salons.filter((s) => s.city && anchor.city && s.city.toLowerCase() === anchor.city.toLowerCase())
     );
     return withNearbyBounds(ranked, cityPool);
   }
 
-  if (
-    lat != null &&
-    lng != null &&
-    !Number.isNaN(Number(lat)) &&
-    !Number.isNaN(Number(lng))
-  ) {
+  if (lat != null && lng != null && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))) {
     const la = Number(lat);
     const ln = Number(lng);
     const withCoords = salons.filter((s) => s.lat != null && s.lng != null);
@@ -210,7 +191,7 @@ export function getSalonByIdFromCache(salonId) {
   return getSalonFromCache(salonId) || null;
 }
 
-// ─── WhatsApp list row: title max 24, description max 72 chars ───
+// ─── WhatsApp list: title max 24, description max 72 chars ───
 
 export function truncateSalonListTitle(name, max = 24) {
   const n = String(name || "");
@@ -219,35 +200,25 @@ export function truncateSalonListTitle(name, max = 24) {
   return `${n.slice(0, max - 3)}...`;
 }
 
-// ─── UPDATED: description now shows rating + reviews like Google Maps ───
+// ─── FIXED: Each salon shows its OWN rating from database ────
 export function formatSalonListDescription(s) {
-  const parts = [];
+  // Get this salon's specific rating from database (per-salon, not default)
+  const { rating, reviewCount } = getSalonRating(s.id);
 
-  // Rating stars + review count (like: ⭐ 4.9 · 170 Reviews)
-  if (s.rating && s.rating > 0) {
-    const stars = "⭐";
-    const reviewText = s.reviewCount > 0 ? ` · ${s.reviewCount} Reviews` : "";
-    parts.push(`${stars} ${s.rating}${reviewText}`);
-  }
+  const ratingLine = `⭐ ${rating} · ${reviewCount} Reviews`;
 
-  // Address or area + city
+  // Address line
   const address = String(s.addressLine1 || "").trim();
   const fallback = [s.area, s.city].filter(Boolean).join(", ");
   const locationLine = address || fallback;
 
-  if (locationLine) {
-    // Remaining space after rating line
-    const ratingLine = parts[0] || "";
-    const maxAddress = 72 - (ratingLine ? ratingLine.length + 1 : 0);
-    const trimmed = locationLine.length > maxAddress
-      ? `${locationLine.slice(0, maxAddress - 3)}...`
-      : locationLine;
-    parts.push(trimmed);
-  }
+  // Combine — WhatsApp list description max 72 chars total
+  // Show rating on first part, address truncated to fit
+  const combined = locationLine
+    ? `${ratingLine} · ${locationLine}`
+    : ratingLine;
 
-  // Combine with newline — WhatsApp list descriptions support \n
-  const combined = parts.join("\n");
-  return combined.slice(0, 72);
+  return combined.length > 72 ? combined.slice(0, 69) + "..." : combined;
 }
 
 export function getSalonListTitle(s) {
@@ -301,17 +272,12 @@ export function getAvailableSlotsByOpenHours({ date, openHours, stepMinutes = 30
   if (!parsed) {
     return ["10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM"];
   }
-
   const { start, end } = parsed;
-  if (end <= start) {
-    return [];
-  }
-
+  if (end <= start) return [];
   const all = [];
   for (let cur = start; cur <= end - stepMinutes; cur += stepMinutes) {
     all.push(minutesToTimeString(cur));
   }
-
   const skipIndex = (String(date || "").length + start + end) % 4;
   return all.filter((_, idx) => idx % 4 !== skipIndex);
 }
