@@ -110,6 +110,17 @@ app.get("/internal/debug-env", (_req, res) => {
   });
 });
 
+// ─── TEMP DEBUG: call the EXACT same function the WhatsApp command uses ──
+// Remove this route once the PDF issue is fixed.
+app.get("/internal/debug-sendreport", async (_req, res) => {
+  try {
+    const stats = await sendDailyReport();
+    return res.json({ ok: true, total: stats.total, date: stats.date });
+  } catch (e) {
+    return res.json({ ok: false, error: e.message, stack: e.stack });
+  }
+});
+
 // ─── TEMP DEBUG: run the full report pipeline and surface the REAL error ──
 // Remove this route once the PDF issue is fixed.
 app.get("/internal/debug-report", async (_req, res) => {
