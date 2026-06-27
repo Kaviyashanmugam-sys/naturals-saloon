@@ -1,4 +1,3 @@
-
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -97,6 +96,18 @@ app.use("/static", express.static(path.join(__dirname, "..", "public")));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "naturals-whatsapp-bot" });
+});
+
+// ─── TEMP DEBUG: check if PDFSHIFT_API_KEY is loaded in this process ──
+// Remove this route once the PDF issue is fixed.
+app.get("/internal/debug-env", (_req, res) => {
+  res.json({
+    pdfshift_key_present: !!process.env.PDFSHIFT_API_KEY,
+    pdfshift_key_length: process.env.PDFSHIFT_API_KEY?.length || 0,
+    pdfshift_key_preview: process.env.PDFSHIFT_API_KEY
+      ? process.env.PDFSHIFT_API_KEY.slice(0, 6) + "..." + process.env.PDFSHIFT_API_KEY.slice(-4)
+      : null
+  });
 });
 
 app.use(appointmentConfirmationRouter);
