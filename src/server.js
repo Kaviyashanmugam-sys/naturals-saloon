@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import os from "os";
 import { fileURLToPath } from "url";
 import { config, validateConfig } from "./config.js";
 import {
@@ -678,6 +679,17 @@ async function handleInboundText(msg) {
       return;
     }
 
+    if (norm === "whoami") {
+      await sendText(from,
+        `🖥️ Instance: ${process.env.RENDER_INSTANCE_ID || os.hostname()}\n` +
+        `📦 Commit: ${process.env.RENDER_GIT_COMMIT || "unknown"}\n` +
+        `🔑 Key present: ${!!process.env.PDFSHIFT_API_KEY}\n` +
+        `🔑 Key length: ${process.env.PDFSHIFT_API_KEY?.length || 0}\n` +
+        `⏱️ Uptime: ${Math.floor(process.uptime())}s`
+      );
+      return;
+    }
+
     // ─── sendreport: PDF ONLY ─────────────────────────────
     if (norm === "sendreport" || norm === "dailyreport" || norm === "send report" || norm === "report") {
       try {
@@ -687,7 +699,7 @@ async function handleInboundText(msg) {
       } catch (e) {
         console.error("[sendreport] FULL ERROR:", e.message, e.stack);
         logWebhookError("sendreport admin cmd", e);
-        await sendText(from, `❌ Report failed: ${e.message}`);
+        await sendText(from, `❌ Report failed: ${e.message}\n\n🖥️ Instance: ${process.env.RENDER_INSTANCE_ID || os.hostname()}\n🔑 Key present: ${!!process.env.PDFSHIFT_API_KEY}`);
       }
       return;
     }
