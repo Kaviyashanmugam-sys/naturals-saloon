@@ -1,22 +1,11 @@
 // src/reportGenerator.js
-// Naturals Salon — Daily PDF Report (clean · only essential content)
+// Naturals Salon — Premium PDF Report with Logo + Light Green Theme
 
 export function buildDailyReportHtml(stats) {
   const {
-    date,
-    total,
-    completed,
-    pending,
-    cancelled,
-    noShow,
-    walkIn,
-    online,
-    completionRate,
-    peakHour,
-    peakCount,
-    serviceBreakdown,
-    staffBreakdown,
-    topSalons
+    date, total, completed, pending, cancelled, noShow,
+    walkIn, online, completionRate, peakHour, peakCount,
+    serviceBreakdown, staffBreakdown, topSalons
   } = stats;
 
   const dateObj = new Date(date + "T00:00:00");
@@ -29,26 +18,33 @@ export function buildDailyReportHtml(stats) {
     hour: "2-digit", minute: "2-digit", hour12: true
   });
 
-  const serviceRows = (serviceBreakdown || []).slice(0, 8).map(s => `
-    <tr>
+  const serviceRows = (serviceBreakdown || []).slice(0, 8).map((s, i) => `
+    <tr class="${i % 2 === 0 ? 'even' : ''}">
       <td>${escHtml(s.name)}</td>
       <td class="num">${s.total}</td>
-      <td class="num">${s.completed}</td>
-      <td class="num">${s.pending}</td>
+      <td class="num c-green">${s.completed}</td>
+      <td class="num c-orange">${s.pending}</td>
     </tr>`).join("") || `<tr><td colspan="4" class="empty">No service data for today</td></tr>`;
 
-  const staffRows = (staffBreakdown || []).slice(0, 8).map(s => `
-    <tr>
+  const staffRows = (staffBreakdown || []).slice(0, 8).map((s, i) => `
+    <tr class="${i % 2 === 0 ? 'even' : ''}">
       <td>${escHtml(s.name)}</td>
       <td class="num">${s.served}</td>
-      <td class="num">${s.completed}</td>
+      <td class="num c-green">${s.completed}</td>
     </tr>`).join("") || `<tr><td colspan="3" class="empty">No staff data for today</td></tr>`;
 
-  const salonRows = (topSalons || []).slice(0, 10).map(s => `
-    <tr>
+  const salonRows = (topSalons || []).slice(0, 10).map((s, i) => `
+    <tr class="${i % 2 === 0 ? 'even' : ''}">
       <td>${escHtml(s.name)}</td>
       <td class="num">${s.count}</td>
     </tr>`).join("") || `<tr><td colspan="2" class="empty">No salon data for today</td></tr>`;
+
+  // Naturals logo SVG (N letter in green circle - matches brand)
+  const logoSvg = `<svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="26" cy="26" r="26" fill="#1a7a3c"/>
+    <text x="26" y="35" font-family="Arial,sans-serif" font-size="28" font-weight="900"
+      text-anchor="middle" fill="#ffffff" letter-spacing="-1">N</text>
+  </svg>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -58,123 +54,236 @@ export function buildDailyReportHtml(stats) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Inter', -apple-system, Arial, sans-serif;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f0f7f2;
     color: #1a1a1a;
-    background: #fff;
-    padding: 32px;
+    padding: 0;
     font-size: 13px;
     line-height: 1.5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+
+  /* ── HEADER ── */
   .header {
-    border-bottom: 3px solid #0a7d3b;
-    padding-bottom: 16px;
-    margin-bottom: 24px;
+    background: linear-gradient(135deg, #1a7a3c 0%, #0f5229 100%);
+    padding: 28px 36px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
-  .brand { font-size: 24px; font-weight: 700; color: #0a7d3b; letter-spacing: 0.5px; }
-  .subtitle { font-size: 13px; color: #555; margin-top: 4px; }
-  .meta { font-size: 12px; color: #777; margin-top: 8px; }
-  h2 {
-    font-size: 15px;
-    color: #0a7d3b;
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .brand-name { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: 1px; }
+  .brand-sub { font-size: 12px; color: rgba(255,255,255,0.7); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+  .header-right { text-align: right; }
+  .report-title { font-size: 13px; color: rgba(255,255,255,0.7); letter-spacing: 1px; text-transform: uppercase; }
+  .report-date { font-size: 17px; font-weight: 700; color: #fff; margin-top: 4px; }
+  .report-gen { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 3px; }
+
+  /* ── BODY ── */
+  .body { padding: 28px 36px; }
+
+  /* ── SECTION TITLE ── */
+  .sec-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1a7a3c;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     margin: 24px 0 12px;
     padding-bottom: 6px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 2px solid #c8e6d0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+  .sec-title::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 14px;
+    background: #1a7a3c;
+    border-radius: 2px;
+  }
+
+  /* ── KPI GRID ── */
   .kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .kpi {
-    background: #f7f9f7;
-    border: 1px solid #e6ece6;
-    border-left: 4px solid #0a7d3b;
-    padding: 12px;
-    border-radius: 4px;
+    background: #fff;
+    border: 1px solid #d4eadb;
+    border-top: 3px solid #1a7a3c;
+    border-radius: 6px;
+    padding: 14px 12px;
+    text-align: center;
   }
-  .kpi .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
-  .kpi .value { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-top: 4px; }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 12px;
+  .kpi.amber { border-top-color: #e08c00; }
+  .kpi.red   { border-top-color: #c0392b; }
+  .kpi.blue  { border-top-color: #2471a3; }
+  .kpi-label { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .kpi-value { font-size: 28px; font-weight: 800; color: #1a7a3c; line-height: 1; }
+  .kpi.amber .kpi-value { color: #e08c00; }
+  .kpi.red   .kpi-value { color: #c0392b; }
+  .kpi.blue  .kpi-value { color: #2471a3; }
+  .kpi-sub { font-size: 10px; color: #999; margin-top: 4px; }
+
+  /* ── PEAK PILL ── */
+  .peak-pill {
+    display: inline-block;
+    background: #e8f5ec;
+    border: 1px solid #b8ddc4;
+    border-radius: 20px;
+    padding: 5px 14px;
     font-size: 12px;
+    color: #1a7a3c;
+    font-weight: 600;
+    margin-top: 10px;
   }
+
+  /* ── TABLE ── */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 6px; }
+  thead tr { background: #1a7a3c; }
   th {
-    background: #0a7d3b;
     color: #fff;
     text-align: left;
-    padding: 8px 10px;
-    font-weight: 600;
+    padding: 9px 12px;
+    font-size: 10.5px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    font-size: 11px;
+    letter-spacing: 0.5px;
   }
-  td {
-    padding: 8px 10px;
-    border-bottom: 1px solid #eee;
-  }
+  th.r { text-align: right; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e8f0eb; color: #333; }
   td.num { text-align: right; font-weight: 600; }
-  td.empty { text-align: center; color: #999; font-style: italic; padding: 16px; }
-  tr:nth-child(even) td { background: #fafafa; }
+  td.c-green { color: #1a7a3c; }
+  td.c-orange { color: #e08c00; }
+  td.empty { text-align: center; color: #aaa; font-style: italic; padding: 20px; }
+  tr.even td { background: #f5faf6; }
+
+  /* ── 2 COL ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* ── FOOTER ── */
   .footer {
     margin-top: 32px;
-    padding-top: 16px;
-    border-top: 1px solid #e0e0e0;
+    padding: 16px 36px;
+    background: #1a7a3c;
     text-align: center;
     font-size: 11px;
-    color: #999;
+    color: rgba(255,255,255,0.6);
   }
+  .footer strong { color: #fff; }
 </style>
 </head>
 <body>
 
-  <div class="header">
-    <div class="brand">NATURALS SALON</div>
-    <div class="subtitle">Daily Business Report</div>
-    <div class="meta">${escHtml(dateFormatted)} &middot; Generated: ${escHtml(generatedAt)} IST</div>
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    ${logoSvg}
+    <div>
+      <div class="brand-name">NATURALS</div>
+      <div class="brand-sub">Unisex Hair &amp; Style</div>
+    </div>
   </div>
+  <div class="header-right">
+    <div class="report-title">Daily Business Report</div>
+    <div class="report-date">${escHtml(dateFormatted)}</div>
+    <div class="report-gen">Generated: ${escHtml(generatedAt)} IST</div>
+  </div>
+</div>
 
-  <h2>Booking Summary</h2>
+<!-- BODY -->
+<div class="body">
+
+  <!-- Booking Summary -->
+  <div class="sec-title">Booking Summary</div>
   <div class="kpi-grid">
-    <div class="kpi"><div class="label">Total Bookings</div><div class="value">${total}</div></div>
-    <div class="kpi"><div class="label">Completed</div><div class="value">${completed}</div></div>
-    <div class="kpi"><div class="label">Pending</div><div class="value">${pending}</div></div>
-    <div class="kpi"><div class="label">Cancelled</div><div class="value">${cancelled}</div></div>
-    <div class="kpi"><div class="label">No Show</div><div class="value">${noShow}</div></div>
-    <div class="kpi"><div class="label">Walk-ins</div><div class="value">${walkIn}</div></div>
-    <div class="kpi"><div class="label">Online (WA)</div><div class="value">${online}</div></div>
-    <div class="kpi"><div class="label">Completion %</div><div class="value">${completionRate}%</div></div>
+    <div class="kpi">
+      <div class="kpi-label">Total Bookings</div>
+      <div class="kpi-value">${total}</div>
+      <div class="kpi-sub">All channels</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Completed</div>
+      <div class="kpi-value">${completed}</div>
+      <div class="kpi-sub">Services done</div>
+    </div>
+    <div class="kpi amber">
+      <div class="kpi-label">Pending</div>
+      <div class="kpi-value">${pending}</div>
+      <div class="kpi-sub">Awaiting</div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-label">Cancelled</div>
+      <div class="kpi-value">${cancelled}</div>
+      <div class="kpi-sub">Today</div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-label">No Show</div>
+      <div class="kpi-value">${noShow}</div>
+      <div class="kpi-sub">Absent</div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpi-label">Walk-ins</div>
+      <div class="kpi-value">${walkIn}</div>
+      <div class="kpi-sub">Direct visits</div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpi-label">Online (WA)</div>
+      <div class="kpi-value">${online}</div>
+      <div class="kpi-sub">WhatsApp</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Completion</div>
+      <div class="kpi-value">${completionRate}%</div>
+      <div class="kpi-sub">Rate</div>
+    </div>
   </div>
-  <div class="meta" style="margin-top:8px;">
-    Peak Hour: <strong>${escHtml(peakHour)}</strong>${peakCount > 0 ? ` (${peakCount} bookings)` : ""}
-  </div>
+  ${peakHour !== "—" ? `<div class="peak-pill">🕐 Peak Hour: ${escHtml(peakHour)}${peakCount > 0 ? ` · ${peakCount} bookings` : ""}</div>` : ""}
 
-  <h2>Service Summary</h2>
+  <!-- Service Summary -->
+  <div class="sec-title">Service Summary</div>
   <table>
-    <thead><tr><th>Service</th><th style="text-align:right">Total</th><th style="text-align:right">Completed</th><th style="text-align:right">Pending</th></tr></thead>
+    <thead><tr>
+      <th>Service</th>
+      <th class="r">Total</th>
+      <th class="r">Completed</th>
+      <th class="r">Pending</th>
+    </tr></thead>
     <tbody>${serviceRows}</tbody>
   </table>
 
-  <h2>Staff Performance</h2>
-  <table>
-    <thead><tr><th>Stylist</th><th style="text-align:right">Served</th><th style="text-align:right">Completed</th></tr></thead>
-    <tbody>${staffRows}</tbody>
-  </table>
-
-  <h2>Nearby / Top Salons Today</h2>
-  <table>
-    <thead><tr><th>Salon</th><th style="text-align:right">Bookings</th></tr></thead>
-    <tbody>${salonRows}</tbody>
-  </table>
-
-  <div class="footer">
-    Naturals Salon Management System &middot; Confidential — Internal Use Only<br>
-    ${escHtml(generatedAt)} IST &middot; ${escHtml(date)}
+  <!-- Staff + Salons -->
+  <div class="two-col">
+    <div>
+      <div class="sec-title">Staff Performance</div>
+      <table>
+        <thead><tr><th>Stylist</th><th class="r">Served</th><th class="r">Done</th></tr></thead>
+        <tbody>${staffRows}</tbody>
+      </table>
+    </div>
+    <div>
+      <div class="sec-title">Top Salons Today</div>
+      <table>
+        <thead><tr><th>Salon</th><th class="r">Bookings</th></tr></thead>
+        <tbody>${salonRows}</tbody>
+      </table>
+    </div>
   </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <strong>Naturals Salon Management System</strong> &nbsp;·&nbsp;
+  Confidential — Internal Use Only &nbsp;·&nbsp;
+  ${escHtml(generatedAt)} IST
+</div>
 
 </body>
 </html>`;
