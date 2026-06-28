@@ -1,14 +1,14 @@
-
 import { getDailyStats } from "./database.js";
 import { buildDailyReportHtml } from "./reportGenerator.js";
 import { config } from "./config.js";
 import { logWebhook, logWebhookError } from "./webhookLog.js";
 import { readFileSync } from "fs";
 
-// ─── ADMIN NUMBER ────────────────────────────────────────────
-const ADMIN_NUMBER = process.env.ADMIN_WHATSAPP || "917904307757";
+// ─── ADMIN NUMBERS (same as server.js — comma separated) ─────
+const rawAdminEnv = process.env.ADMIN_WHATSAPP || "917904307757";
+const ADMIN_NUMBERS = rawAdminEnv.split(",").map(n => n.trim()).filter(Boolean);
 
-// ─── Get PDFShift key — env var OR secret file ───────────────
+// ─── Get PDFShift key ─────────────────────────────────────────
 function getPdfShiftKey() {
   if (process.env.PDFSHIFT_API_KEY) {
     console.log("[pdfshift] key from env var OK");
@@ -27,12 +27,11 @@ function getPdfShiftKey() {
       }
     } catch {}
   }
-  if (process.env.PDFSHIFT_API_KEY) return process.env.PDFSHIFT_API_KEY;
   console.error("[pdfshift] key NOT FOUND anywhere!");
   return null;
 }
 
-// ─── WhatsApp Media Helpers ──────────────────────────────────
+// ─── WhatsApp Helpers ─────────────────────────────────────────
 async function uploadMediaBuffer(buffer, filename, mimeType) {
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/media`;
   const form = new globalThis.FormData();
@@ -68,7 +67,7 @@ async function sendWhatsAppDocument(to, mediaId, filename) {
   return res.json();
 }
 
-// ─── PDF Generation via PDFShift ─────────────────────────────
+// ─── PDF Generation ───────────────────────────────────────────
 async function generatePdfFromHtml(html) {
   const apiKey = getPdfShiftKey();
   if (!apiKey) throw new Error("PDFSHIFT_API_KEY not set — cannot generate PDF");
@@ -115,8 +114,15 @@ export async function sendDailyReport(dateStr) {
   const pdfMediaId = await uploadMediaBuffer(pdfBuffer, filename, "application/pdf");
   logWebhook("daily_report", `PDF uploaded: media_id=${pdfMediaId}`);
 
-  await sendWhatsAppDocument(ADMIN_NUMBER, pdfMediaId, filename);
-  logWebhook("daily_report", `PDF sent to ${ADMIN_NUMBER}`);
+  // Send to ALL admin numbers
+  for (const adminNum of ADMIN_NUMBERS) {
+    try {
+      await sendWhatsAppDocument(adminNum, pdfMediaId, filename);
+      logWebhook("daily_report", `PDF sent to ${adminNum}`);
+    } catch (sendErr) {
+      logWebhookError(`daily_report send to ${adminNum}`, sendErr);
+    }
+  }
 
   return stats;
 }
