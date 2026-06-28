@@ -271,6 +271,9 @@ async function handleFlowCompletion(msg) {
     console.log("[DEBUG-BOOKING] insertBooking() returned successfully, bookingId=", fallbackBooking.bookingId);
     logWebhook("db", `booking persisted from nfm_reply id=${fallbackBooking.bookingId}`);
 
+    // Notify admin
+    sendAdminBookingNotification(fallbackBooking).catch(e => logWebhookError("sendAdminBookingNotification", e));
+
     const addToCalendarPayload = {
       storeid: Number(payload.salon_id || 0),
       orgid: config.gtlOrgId,
@@ -329,6 +332,85 @@ async function handleFlowCompletion(msg) {
       logWebhookError("send location pin", e);
     }
   }
+}
+
+// ─── Admin Booking Notification ──────────────────────────────
+async function sendAdminBookingNotification(booking) {
+  const adminNums = (process.env.ADMIN_WHATSAPP || "917904307757")
+    .split(",").map(n => n.trim()).filter(Boolean);
+
+  const msg =
+    `🆕 *New Booking Request!*
+
+` +
+    `👤 *Name:* ${booking.fullName || "-"}
+` +
+    `💇 *Service:* ${booking.serviceItem || booking.serviceCategory || "-"}
+` +
+    `📍 *Salon:* ${booking.salonName || "-"}
+` +
+    `📅 *Date:* ${booking.date || "-"}
+` +
+    `🕐 *Time:* ${booking.timeSlot || "-"}
+` +
+    `💁 *Stylist:* ${booking.stylistName || "-"}
+` +
+    `🆔 *ID:* ${booking.bookingId}
+
+` +
+    `_Reply Approve or Reject with booking ID:_
+` +
+    `✅ approve ${booking.bookingId}
+` +
+    `❌ reject ${booking.bookingId}`;
+
+  for (const adminNum of adminNums) {
+    try {
+      // Send with Approve/Reject buttons
+      const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.whatsappToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: adminNum,
+          type: "interactive",
+          interactive: {
+            type: "button",
+            body: { text: msg },
+            action: {
+              buttons: [
+                { type: "reply", reply: { id: `approve_${booking.bookingId}`, title: "✅ Approve" } },
+                { type: "reply", reply: { id: `reject_${booking.bookingId}`, title: "❌ Reject" } }
+              ]
+            }
+          }
+        })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        logWebhookError("admin notification", new Error(err.slice(0, 200)));
+      } else {
+        logWebhook("admin_notify", `booking ${booking.bookingId} notified to ${adminNum}`);
+      }
+    } catch (e) {
+      logWebhookError(`admin notify ${adminNum}`, e);
+    }
+  }
+}
+
+// ─── Update booking status in DB ─────────────────────────────
+async function updateBookingStatus(bookingId, status) {
+  const bookings = await listBookings();
+  const booking = bookings.find(b => b.bookingId === bookingId);
+  if (!booking) return null;
+  booking.status = status;
+  booking.updatedAt = new Date().toISOString();
+  await insertBooking(booking); // upsert
+  return booking;
 }
 
 // ─── Resolve a valid maps URL from payload ───────────────────
@@ -833,6 +915,85 @@ async function handleActionButtonReply(msg) {
   if (!from) return;
   const btnId = msg.interactive?.button_reply?.id;
   if (!btnId) return;
+
+  // ── Admin Approve/Reject ──────────────────────────────────
+  if (btnId.startsWith("approve_") && ADMIN_NUMBERS.has(from)) {
+    const bookingId = btnId.replace("approve_", "");
+    const booking = await updateBookingStatus(bookingId, "CONFIRMED");
+    if (booking) {
+      await sendText(from, `✅ Booking *${bookingId}* approved!
+
+👤 ${booking.fullName}
+💇 ${booking.serviceItem}
+📍 ${booking.salonName}
+📅 ${booking.date} · ${booking.timeSlot}`);
+      // Notify customer
+      try {
+        const customerMobile = booking.mobile.length === 10 ? `91${booking.mobile}` : booking.mobile;
+        await sendText(customerMobile,
+          `✅ *Booking Confirmed!*
+
+` +
+          `Hi ${booking.fullName}! Your appointment has been confirmed.
+
+` +
+          `💇 *Service:* ${booking.serviceItem}
+` +
+          `📍 *Salon:* ${booking.salonName}
+` +
+          `📅 *Date:* ${booking.date}
+` +
+          `🕐 *Time:* ${booking.timeSlot}
+` +
+          `🆔 *Booking ID:* ${booking.bookingId}
+
+` +
+          `_We look forward to seeing you! 💚 Naturals_`
+        );
+      } catch (e) { logWebhookError("customer confirm notify", e); }
+    } else {
+      await sendText(from, `❌ Booking ID *${bookingId}* not found.`);
+    }
+    return;
+  }
+
+  if (btnId.startsWith("reject_") && ADMIN_NUMBERS.has(from)) {
+    const bookingId = btnId.replace("reject_", "");
+    const booking = await updateBookingStatus(bookingId, "REJECTED");
+    if (booking) {
+      await sendText(from, `❌ Booking *${bookingId}* rejected.
+
+👤 ${booking.fullName}
+💇 ${booking.serviceItem}
+📍 ${booking.salonName}`);
+      // Notify customer
+      try {
+        const customerMobile = booking.mobile.length === 10 ? `91${booking.mobile}` : booking.mobile;
+        await sendText(customerMobile,
+          `❌ *Booking Update*
+
+` +
+          `Hi ${booking.fullName}, we regret to inform you that your booking request could not be confirmed at this time.
+
+` +
+          `💇 *Service:* ${booking.serviceItem}
+` +
+          `📍 *Salon:* ${booking.salonName}
+` +
+          `📅 *Date:* ${booking.date}
+
+` +
+          `Please try booking a different time slot or contact us directly.
+
+` +
+          `_Sorry for the inconvenience. 💚 Naturals_`
+        );
+      } catch (e) { logWebhookError("customer reject notify", e); }
+    } else {
+      await sendText(from, `❌ Booking ID *${bookingId}* not found.`);
+    }
+    return;
+  }
 
   if (btnId === "action_book" || btnId === "loc_change_option") {
     await startBookingLocationFlow(from);
